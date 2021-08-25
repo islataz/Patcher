@@ -28,11 +28,23 @@ namespace Patcher
 {
     public static class MainPatcher
     {
-        // TargetFilePath is relative to the root of the PatchDefinition
-        // OutputFilePath can be null
+        /// <summary>
+        /// TargetFilePath is relative to the root of the PatchDefinition
+        /// OutputFilePath can be null
+        /// </summary>
+        /// <param name="InputFilePath"></param>
+        /// <param name="OutputFilePath"></param>
+        /// <param name="PatchDefinitionName"></param>
+        /// <param name="TargetVersionDescription"></param>
+        /// <param name="TargetFilePath"></param>
+        /// <param name="PathToVisualStudioWithWP8SDK"></param>
+        /// <param name="VirtualAddress"></param>
+        /// <param name="CodeType"></param>
+        /// <param name="ArmCodeFragment"></param>
+        /// <param name="PatchDefintionsXmlPath"></param>
         public static void AddPatch(string InputFilePath, string OutputFilePath, string PatchDefinitionName, string TargetVersionDescription, string TargetFilePath, string PathToVisualStudioWithWP8SDK, UInt32 VirtualAddress, CodeType CodeType, string ArmCodeFragment, string PatchDefintionsXmlPath)
         {
-            SHA1Managed SHA = new SHA1Managed();
+            SHA1Managed SHA = new();
 
             // Compile ARM code
             byte[] CompiledCode = null;
@@ -47,29 +59,33 @@ namespace Patcher
             UInt32 OriginalChecksum = ByteOperations.ReadUInt32(Binary, ChecksumOffset);
 
             // Determine Raw Offset
-            PeFile PeFile = new PeFile(Binary);
+            PeFile PeFile = new(Binary);
             UInt32 RawOffset = 0;
             if (VirtualAddress != 0)
                 RawOffset = PeFile.ConvertVirtualAddressToRawOffset(VirtualAddress);
 
             // Add or replace patch
             string PatchDefintionsXml = File.ReadAllText(PatchDefintionsXmlPath);
-            PatchEngine PatchEngine = new PatchEngine(PatchDefintionsXml);
-            PatchDefinition PatchDefinition = PatchEngine.PatchDefinitions.Where(d => (string.Compare(d.Name, PatchDefinitionName, true) == 0)).FirstOrDefault();
+            PatchEngine PatchEngine = new(PatchDefintionsXml);
+            PatchDefinition PatchDefinition = PatchEngine.PatchDefinitions.Find(d => string.Equals(d.Name, PatchDefinitionName, StringComparison.CurrentCultureIgnoreCase));
             if (PatchDefinition == null)
             {
-                PatchDefinition = new PatchDefinition();
-                PatchDefinition.Name = PatchDefinitionName;
+                PatchDefinition = new PatchDefinition
+                {
+                    Name = PatchDefinitionName
+                };
                 PatchEngine.PatchDefinitions.Add(PatchDefinition);
             }
-            TargetVersion TargetVersion = PatchDefinition.TargetVersions.Where(v => (string.Compare(v.Description, TargetVersionDescription, true) == 0)).FirstOrDefault();
+            TargetVersion TargetVersion = PatchDefinition.TargetVersions.Find(v => string.Equals(v.Description, TargetVersionDescription, StringComparison.CurrentCultureIgnoreCase));
             if (TargetVersion == null)
             {
-                TargetVersion = new TargetVersion();
-                TargetVersion.Description = TargetVersionDescription;
+                TargetVersion = new TargetVersion
+                {
+                    Description = TargetVersionDescription
+                };
                 PatchDefinition.TargetVersions.Add(TargetVersion);
             }
-            TargetFile TargetFile = TargetVersion.TargetFiles.Where(f => ((f.Path != null) && (string.Compare(f.Path.TrimStart(new char[] { '\\' }), TargetFilePath.TrimStart(new char[] { '\\' }), true) == 0))).FirstOrDefault();
+            TargetFile TargetFile = TargetVersion.TargetFiles.Find(f => (f.Path != null) && (string.Equals(f.Path.TrimStart(new char[] { '\\' }), TargetFilePath.TrimStart(new char[] { '\\' }), StringComparison.CurrentCultureIgnoreCase)));
             if (TargetFile == null)
             {
                 TargetFile = new TargetFile();
@@ -80,11 +96,13 @@ namespace Patcher
             Patch Patch;
             if (VirtualAddress != 0)
             {
-                Patch = TargetFile.Patches.Where(p => p.Address == RawOffset).FirstOrDefault();
+                Patch = TargetFile.Patches.Find(p => p.Address == RawOffset);
                 if (Patch == null)
                 {
-                    Patch = new Patch();
-                    Patch.Address = RawOffset;
+                    Patch = new Patch
+                    {
+                        Address = RawOffset
+                    };
                     TargetFile.Patches.Add(Patch);
                 }
                 Patch.OriginalBytes = new byte[CompiledCode.Length];
@@ -104,11 +122,13 @@ namespace Patcher
             UInt32 Checksum = CalculateChecksum(Binary);
 
             // Add or replace checksum patch
-            Patch = TargetFile.Patches.Where(p => p.Address == ChecksumOffset).FirstOrDefault();
+            Patch = TargetFile.Patches.Find(p => p.Address == ChecksumOffset);
             if (Patch == null)
             {
-                Patch = new Patch();
-                Patch.Address = ChecksumOffset;
+                Patch = new Patch
+                {
+                    Address = ChecksumOffset
+                };
                 TargetFile.Patches.Add(Patch);
             }
             Patch.OriginalBytes = new byte[4];

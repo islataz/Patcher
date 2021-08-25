@@ -71,8 +71,7 @@ namespace Patcher
                 " AREA ARM_AREA, CODE, READONLY" + Environment.NewLine +
                 " " + CodeTypeDirective + Environment.NewLine;
 
-            UInt32 Padding;
-            string ProcessedAssembly = ProcessArmCodeFragment(ArmCodeFragment, Origin, out Padding);
+            string ProcessedAssembly = ProcessArmCodeFragment(ArmCodeFragment, Origin, out uint Padding);
 
             if (Padding > 0)
                 FullAssemblyCode += " SPACE " + Padding.ToString() + Environment.NewLine;
@@ -85,7 +84,7 @@ namespace Patcher
 
             File.WriteAllText(AssemblyFilePath, FullAssemblyCode);
 
-            ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(PathToVisualStudio, @"VC\bin\x86_arm\armasm.exe"));
+            ProcessStartInfo psi = new(Path.Combine(PathToVisualStudio, @"VC\bin\x86_arm\armasm.exe"));
             psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"Common7\IDE\");
             psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"Common7\Tools\");
             psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"VC\bin\");
@@ -99,35 +98,33 @@ namespace Patcher
             LastErrorCode = ArmAsmProcess.ExitCode;
             if (ArmAsmProcess.ExitCode != 0)
             {
-                using (StreamReader reader = ArmAsmProcess.StandardOutput)
+                using StreamReader reader = ArmAsmProcess.StandardOutput;
+                Output = reader.ReadToEnd();
+
+                string[] Lines = Output.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+
+                Output = "";
+
+                foreach (string Line in Lines)
                 {
-                    Output = reader.ReadToEnd();
-
-                    string[] Lines = Output.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-
-                    Output = "";
-
-                    foreach (string Line in Lines)
+                    string Out = Line.Trim();
+                    if (Out.Length == 0) continue;
+                    if (Out.StartsWith("Microsoft (R) ARM Macro Assembler")) continue;
+                    if (Out.StartsWith("Copyright (C) Microsoft Corporation")) continue;
+                    if (Out.StartsWith(AssemblyFilePath))
                     {
-                        string Out = Line.Trim();
-                        if (Out.Length == 0) continue;
-                        if (Out.StartsWith("Microsoft (R) ARM Macro Assembler")) continue;
-                        if (Out.StartsWith("Copyright (C) Microsoft Corporation")) continue;
-                        if (Out.StartsWith(AssemblyFilePath))
-                        {
-                            Out = Out.Substring(AssemblyFilePath.Length);
-                            int P = Out.IndexOf(':');
-                            Out = Out.Substring(P + 1).Trim();
-                        }
-                        Output += Out + Environment.NewLine;
+                        Out = Out[AssemblyFilePath.Length..];
+                        int P = Out.IndexOf(':');
+                        Out = Out[(P + 1)..].Trim();
                     }
+                    Output += Out + Environment.NewLine;
                 }
             }
 
             byte[] Result = null;
-            
+
             if (LastErrorCode == 0)
-                Result = COFF.ObjectFileParser.ParseObjectFile(ObjectFilePath).SectionHeaders.Where(h => h.Name == "ARM_AREA").First().RawData;
+                Result = COFF.ObjectFileParser.ParseObjectFile(ObjectFilePath).SectionHeaders.First(h => h.Name == "ARM_AREA").RawData;
 
             File.Delete(AssemblyFilePath);
             File.Delete(ObjectFilePath);
@@ -146,32 +143,32 @@ namespace Patcher
         {
             string[] BranchOpcodes = new string[] { "B", "BEQ", "BNE", "BCS", "BHS", "BCC", "BLO", "BMI", "BPL", "BVS", "BVC", "BHI", "BLS", "BGE", "BLT", "BGT", "BLE", "BAL"};
 
-            StringBuilder Result = new StringBuilder(1000);
+            StringBuilder Result = new(1000);
             Padding = 0;
 
             string[] Lines = ArmCodeFragment.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            List<Tuple<string, string>> Labels = new List<Tuple<string, string>>();
+            List<Tuple<string, string>> Labels = new();
 
             foreach (string Line in Lines)
             {
                 string Code = Line;
-                if (Line.IndexOf(':') >= 0)
+                if (Line.Contains(':'))
                 {
                     string Label = Line.Substring(0, Line.IndexOf(':'));
                     Label = Label.Trim();
                     if (Label.Length > 0)
                         Result.AppendLine(Label);
-                    Code = Line.Substring(Line.IndexOf(':') + 1);
+                    Code = Line[(Line.IndexOf(':') + 1)..];
                 }
 
                 int EquPos = Code.IndexOf("EQU", StringComparison.OrdinalIgnoreCase);
-                if (((EquPos) > 0) && (EquPos > 0) && (EquPos < (Code.Length - 3)))
+                if ((EquPos > 0) && (EquPos > 0) && (EquPos < (Code.Length - 3)))
                 {
-                    if ((new char[] { '\t', ' ' }.Contains(Line[EquPos - 1])) &&
-                        (new char[] { '\t', ' ' }.Contains(Line[EquPos + 3])))
+                    if (new char[] { '\t', ' ' }.Contains(Line[EquPos - 1]) &&
+                        new char[] { '\t', ' ' }.Contains(Line[EquPos + 3]))
                     {
                         Result.AppendLine(Line.Trim());
-                        Labels.Add(new Tuple<string, string>(Line.Substring(0, EquPos).Trim(), Line.Substring(EquPos + 3).Trim()));
+                        Labels.Add(new Tuple<string, string>(Line.Substring(0, EquPos).Trim(), Line[(EquPos + 3)..].Trim()));
                         continue;
                     }
                 }
@@ -189,33 +186,32 @@ namespace Patcher
 
                     if (Opcode == "LDR")
                     {
-                        PossibleAddress = Code.Substring(Code.IndexOf(',') + 1).Trim();
+                        PossibleAddress = Code[(Code.IndexOf(',') + 1)..].Trim();
                     }
                     else if (BranchOpcodes.Contains(Opcode))
                     {
-                        PossibleAddress = Code.Substring(Code.IndexOfAny(new char[] { '\t', ' ' }) + 1).Trim();
+                        PossibleAddress = Code[(Code.IndexOfAny(new char[] { '\t', ' ' }) + 1)..].Trim();
                     }
 
                     if (PossibleAddress != null)
                     {
-                        UInt32 ParsedValue;
                         foreach (Tuple<string, string> Label in Labels)
                         {
-                            if (string.Compare(Label.Item1, PossibleAddress, true) == 0)
+                            if (string.Equals(Label.Item1, PossibleAddress, StringComparison.CurrentCultureIgnoreCase))
                             {
                                 PossibleAddress = Label.Item2;
                                 break;
                             }
                         }
                         if (PossibleAddress.StartsWith("0x"))
-                            PossibleAddress = PossibleAddress.Substring(2);
-                        IsAbsoluteAddress = UInt32.TryParse(PossibleAddress, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out ParsedValue);
+                            PossibleAddress = PossibleAddress[2..];
+                        IsAbsoluteAddress = UInt32.TryParse(PossibleAddress, NumberStyles.HexNumber, CultureInfo.CurrentCulture, out uint ParsedValue);
                         if (IsAbsoluteAddress && (ParsedValue < Origin))
                             Padding = Math.Max(Padding, Origin - ParsedValue);
                     }
                 }
 
-                Result.Append(" ");
+                Result.Append(' ');
                 Result.Append(Code);
                 if (IsAbsoluteAddress)
                 {

@@ -61,10 +61,7 @@ namespace Patcher
         {
             try
             {
-                if (WriteLog != null)
-                    ScriptEngine.WriteLog = WriteLog;
-                else
-                    ScriptEngine.WriteLog = (s) => { };
+                ScriptEngine.WriteLog = WriteLog ?? ((s) => { });
 
                 ScriptCode = new List<CodeLine>();
                 JumpHistory = new List<UInt32>();
@@ -74,14 +71,14 @@ namespace Patcher
                 AnalyzedFile = null;
 
                 ScriptEngine.InputFolderPath = InputFolderPath;
-                ScriptEngine.OutputFolderPath = OutputFolderPath == "" ? null : OutputFolderPath;
-                ScriptEngine.BackupFolderPath = BackupFolderPath == "" ? null : BackupFolderPath;
+                ScriptEngine.OutputFolderPath = OutputFolderPath?.Length == 0 ? null : OutputFolderPath;
+                ScriptEngine.BackupFolderPath = BackupFolderPath?.Length == 0 ? null : BackupFolderPath;
                 ScriptEngine.PathToVisualStudio = PathToVisualStudio;
                 ScriptEngine.PatchEngine = PatchEngine;
 
                 string[] ScriptCodeLines = File.ReadAllText(ScriptFilePath).Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
-                CodeLine CurrentLine = new CodeLine();
+                CodeLine CurrentLine = new();
                 bool InCode = false;
                 for (int i = 0; i < ScriptCodeLines.Length; i++)
                 {
@@ -89,12 +86,12 @@ namespace Patcher
                     if (Line.Length > 0)
                     {
                         string Command = Line.Split(new char[] { ' ', '\t' })[0];
-                        if (string.Compare(Command, "PatchCode", true) == 0)
+                        if (string.Equals(Command, "PatchCode", StringComparison.CurrentCultureIgnoreCase))
                         {
                             InCode = true;
                             CurrentLine.Code = Line;
                         }
-                        else if ((string.Compare(Command, "EndCode", true) == 0) || (string.Compare(Command, "EndPatch", true) == 0))
+                        else if ((string.Equals(Command, "EndCode", StringComparison.CurrentCultureIgnoreCase)) || (string.Equals(Command, "EndPatch", StringComparison.CurrentCultureIgnoreCase)))
                         {
                             InCode = false;
                             ScriptCode.Add(CurrentLine);
@@ -106,7 +103,7 @@ namespace Patcher
                         }
                         else if (Line.EndsWith(":"))
                         {
-                            if ((CurrentLine.Label != null) && (CurrentLine.Label.Length > 0))
+                            if (CurrentLine.Label?.Length > 0)
                                 throw new ScriptParserException("Two labels at the same location");
 
                             string Label = Line.TrimEnd(new char[] { ' ', ':' });
@@ -148,9 +145,9 @@ namespace Patcher
 
         private static string RemoveComment(string Line)
         {
-            int p = 0;
             int q;
             bool InString;
+            int p;
             do
             {
                 InString = false;
@@ -186,12 +183,10 @@ namespace Patcher
         private static void ExecuteCode(CodeLine Line)
         {
             List<Token> Tokens = Tokenizer(Line.Code);
-            string Command;
-            List<Tuple<string, string, TokenType>> Params;
-            ParseTokens(Tokens, out Command, out Params);
+            ParseTokens(Tokens, out string Command, out List<Tuple<string, string, TokenType>> Params);
 
             // Invoke method
-            MethodInfo Method = typeof(ScriptEngine).GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static).Where(m => (string.Compare(m.Name, Command, true) == 0)).FirstOrDefault();
+            MethodInfo Method = Array.Find(typeof(ScriptEngine).GetMethods(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static), m => string.Equals(m.Name, Command, StringComparison.CurrentCultureIgnoreCase));
 
             if (Method == null)
                 throw new ScriptParserException("Unrecognized command: " + Command);
@@ -202,32 +197,21 @@ namespace Patcher
             {
                 if (ParamInfos[i].HasDefaultValue)
                     ParamObjects[i] = ParamInfos[i].DefaultValue;
-                else if (ParamInfos[i].ParameterType.IsValueType)
-                    ParamObjects[i] = Activator.CreateInstance(ParamInfos[i].ParameterType);
-                else
-                    ParamObjects[i] = null;
+                else ParamObjects[i] = ParamInfos[i].ParameterType.IsValueType ? Activator.CreateInstance(ParamInfos[i].ParameterType) : null;
             }
             for (int i = 0; i < Params.Count; i++)
             {
                 int ParamIndex;
                 if (Params[i].Item1 == null)
                 {
-                    if (i < ParamObjects.Length)
-                    {
-                        ParamIndex = i;
-                    }
-                    else
-                        throw new ScriptParserException("Wrong number of parameters for command: " + Command);
+                    ParamIndex = i < ParamObjects.Length ? i : throw new ScriptParserException("Wrong number of parameters for command: " + Command);
                 }
                 else
                 {
-                    ParameterInfo ParamInfo = ParamInfos.Where(p => (string.Compare(p.Name, Params[i].Item1, true) == 0)).FirstOrDefault();
-                    if (ParamInfo != null)
-                    {
-                        ParamIndex = ParamInfo.Position;
-                    }
-                    else
-                        throw new ScriptParserException("Unrecognized parameters " + Params[i].Item1 + " for command: " + Command);
+                    ParameterInfo ParamInfo = Array.Find(ParamInfos, p => string.Equals(p.Name, Params[i].Item1, StringComparison.CurrentCultureIgnoreCase));
+                    ParamIndex = ParamInfo != null
+                        ? ParamInfo.Position
+                        : throw new ScriptParserException("Unrecognized parameters " + Params[i].Item1 + " for command: " + Command);
                 }
 
                 if ((Params[i].Item3 == TokenType.Text) && (ParamInfos[ParamIndex].ParameterType == typeof(string)))
@@ -239,38 +223,31 @@ namespace Patcher
                     if (Params[i].Item2.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
                     {
                         // Hex
-                        UInt32 Value = Convert.ToUInt32(Params[i].Item2.Substring(2), 16);
-                        if (ParamInfos[ParamIndex].ParameterType == typeof(uint))
-                            ParamObjects[ParamIndex] = Value;
-                        else
-                            ParamObjects[ParamIndex] = (int)Value;
+                        UInt32 Value = Convert.ToUInt32(Params[i].Item2[2..], 16);
+                        ParamObjects[ParamIndex] = ParamInfos[ParamIndex].ParameterType == typeof(uint) ? Value : (object)(int)Value;
                     }
                     else
                     {
                         if (Params[i].Item2.StartsWith("-"))
                         {
                             Int32 IntValue = Int32.Parse(Params[i].Item2);
-                            if (ParamInfos[ParamIndex].ParameterType == typeof(uint))
-                                ParamObjects[ParamIndex] = (uint)IntValue;
-                            else
-                                ParamObjects[ParamIndex] = IntValue;
+                            ParamObjects[ParamIndex] = ParamInfos[ParamIndex].ParameterType == typeof(uint) ? (uint)IntValue : (object)IntValue;
                         }
                         else
                         {
                             UInt32 UIntValue = UInt32.Parse(Params[i].Item2);
-                            if (ParamInfos[ParamIndex].ParameterType == typeof(uint))
-                                ParamObjects[ParamIndex] = UIntValue;
-                            else
-                                ParamObjects[ParamIndex] = (int)UIntValue;
+                            ParamObjects[ParamIndex] = ParamInfos[ParamIndex].ParameterType == typeof(uint) ? UIntValue : (object)(int)UIntValue;
                         }
                     }
                 }
                 else
+                {
                     throw new ScriptParserException("Wrong parametertype for parameter " + ParamInfos[ParamIndex].Name + " of command " + Command);
+                }
             }
 
             if (Method.Name == "PatchCode")
-                ParamObjects[ParamObjects.Length - 1] = Line.PatchCode;
+                ParamObjects[^1] = Line.PatchCode;
 
             try
             {
@@ -300,7 +277,7 @@ namespace Patcher
             // Separator: ,
             // Bracket: []{}()
 
-            List<Token> Tokens = new List<Token>();
+            List<Token> Tokens = new();
             int p = 0;
 
             while (p < Line.Length)
@@ -316,7 +293,7 @@ namespace Patcher
                     int q = Line.IndexOf('\"', p + 1);
                     if (q == -1)
                     {
-                        Tokens.Add(new Token() { Type = TokenType.Text, Text = Line.Substring(p + 1) });
+                        Tokens.Add(new Token() { Type = TokenType.Text, Text = Line[(p + 1)..] });
                         p = Line.Length;
                     }
                     else
@@ -340,7 +317,7 @@ namespace Patcher
 
                     if ((q == Line.Length) || char.IsWhiteSpace(Line[q]) || Separators.Contains(Line[q]) || Brackets.Contains(Line[q]) || Operators.Contains(Line[q]))
                     {
-                        Tokens.Add(new Token() { Type = TokenType.Text, Text = Line.Substring(p, q - p) });
+                        Tokens.Add(new Token() { Type = TokenType.Text, Text = Line[p..q] });
                         p = q;
                         continue;
                     }
@@ -360,14 +337,14 @@ namespace Patcher
 
                     if ((q == Line.Length) || char.IsWhiteSpace(Line[q]) || Separators.Contains(Line[q]) || Brackets.Contains(Line[q]) || Operators.Contains(Line[q]))
                     {
-                        Tokens.Add(new Token() { Type = TokenType.Number, Text = Line.Substring(p, q - p), Value = (UInt32)Int32.Parse(Line.Substring(p, q - p)) });
+                        Tokens.Add(new Token() { Type = TokenType.Number, Text = Line[p..q], Value = (UInt32)Int32.Parse(Line[p..q]) });
                         p = q;
                         continue;
                     }
                 }
 
                 // Hex
-                if (((Line.Length - p) >= 3) && (string.Compare(Line.Substring(p, 2), "0x", true) == 0))
+                if (((Line.Length - p) >= 3) && (string.Equals(Line.Substring(p, 2), "0x", StringComparison.CurrentCultureIgnoreCase)))
                 {
                     int q = p + 2;
                     while (q < Line.Length)
@@ -381,7 +358,7 @@ namespace Patcher
 
                     if ((q == Line.Length) || char.IsWhiteSpace(Line[q]) || Separators.Contains(Line[q]) || Brackets.Contains(Line[q]) || Operators.Contains(Line[q]))
                     {
-                        Tokens.Add(new Token() { Type = TokenType.Number, Text = Line.Substring(p, q - p), Value = UInt32.Parse(Line.Substring(p + 2, q - p - 2), System.Globalization.NumberStyles.HexNumber) });
+                        Tokens.Add(new Token() { Type = TokenType.Number, Text = Line[p..q], Value = UInt32.Parse(Line.Substring(p + 2, q - p - 2), System.Globalization.NumberStyles.HexNumber) });
                         p = q;
                         continue;
                     }
@@ -399,7 +376,7 @@ namespace Patcher
                             break;
                     }
 
-                    Tokens.Add(new Token() { Type = TokenType.Operator, Text = Line.Substring(p, q - p) });
+                    Tokens.Add(new Token() { Type = TokenType.Operator, Text = Line[p..q] });
                     p = q;
                     continue;
                 }
@@ -428,8 +405,7 @@ namespace Patcher
 
         private static List<Token> ArmThumbTokenizer(string Line)
         {
-            List<Token> Tokens = null;
-
+            List<Token> Tokens;
             try
             {
                 Tokens = Tokenizer(Line.ToLower().Replace("#", ""));
@@ -439,15 +415,13 @@ namespace Patcher
                 Tokens = new List<Token>();
             }
 
-            int i = 0;
-            while (i < (Tokens.Count - 1))
+            for (int i = 0; i < (Tokens.Count - 1); i++)
             {
                 if ((Tokens[i].Text == "r") && (Tokens[i + 1].Text == "?"))
                 {
                     Tokens[i].Text = "r?";
                     Tokens.RemoveAt(i + 1);
                 }
-                i++;
             }
 
             return Tokens;
@@ -466,7 +440,7 @@ namespace Patcher
 
             if (Tokens.Count > 0)
             {
-                if ((Tokens[0].Text == "(") && (Tokens[Tokens.Count - 1].Text == ")"))
+                if ((Tokens[0].Text == "(") && (Tokens[^1].Text == ")"))
                 {
                     Tokens.RemoveAt(0);
                     Tokens.RemoveAt(Tokens.Count - 1);
@@ -491,7 +465,9 @@ namespace Patcher
                         Tokens.RemoveAt(0);
                     }
                     else
+                    {
                         throw new ScriptParserException("Syntax error");
+                    }
 
                     if ((Tokens.Count > 0) && (Tokens[0].Text == ","))
                         Tokens.RemoveAt(0);
@@ -505,7 +481,7 @@ namespace Patcher
                 return false;
             for (int i = 0; i < Token.Length; i++)
             {
-                if (!(char.IsLetter(Token[i]) || (Token[i] == '_') || (Token[i] == '.') || ((i > 0) && (char.IsNumber(Token[i])))))
+                if (!(char.IsLetter(Token[i]) || (Token[i] == '_') || (Token[i] == '.') || ((i > 0) && char.IsNumber(Token[i]))))
                     return false;
             }
             return true;
@@ -525,7 +501,7 @@ namespace Patcher
             else if (VersionFrom != null)
             {
                 string FullPath = System.IO.Path.Combine(InputFolderPath, VersionFrom);
-                PeFile File = new PeFile(FullPath);
+                PeFile File = new(FullPath);
                 Version ProductVersion = File.GetProductVersion();
                 PatchDefinitionVersion = ProductVersion.Major.ToString() + "." + ProductVersion.Minor.ToString() + "." + ProductVersion.Build.ToString() + "." + ProductVersion.Revision.ToString();
             }
@@ -545,11 +521,9 @@ namespace Patcher
             CloseFile();
             string FullPath = System.IO.Path.Combine(InputFolderPath, RelativePath ?? "", Path);
 
-            string AsmFilePath;
-            if (BackupFolderPath == null)
-                AsmFilePath = System.IO.Path.Combine(InputFolderPath, RelativePath ?? "", Path);
-            else
-                AsmFilePath = System.IO.Path.Combine(BackupFolderPath, RelativePath ?? "", Path).Replace("%VERSION%", PatchDefinitionVersion, StringComparison.OrdinalIgnoreCase);
+            string AsmFilePath = BackupFolderPath == null
+                ? System.IO.Path.Combine(InputFolderPath, RelativePath ?? "", Path)
+                : System.IO.Path.Combine(BackupFolderPath, RelativePath ?? "", Path).Replace("%VERSION%", PatchDefinitionVersion, StringComparison.OrdinalIgnoreCase);
             AsmFilePath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(AsmFilePath), System.IO.Path.GetFileNameWithoutExtension(AsmFilePath) + ".asm");
 
             bool AsmFileExists = File.Exists(AsmFilePath);
@@ -578,27 +552,31 @@ namespace Patcher
 
             CurrentVirtualAddressTarget = (UInt32)AnalyzedFile.File.ImageBase;
 
-            PatchDefinition PatchDefinition = PatchEngine.PatchDefinitions.Where(d => (string.Compare(d.Name, PatchDefinitionName, true) == 0)).FirstOrDefault();
+            PatchDefinition PatchDefinition = PatchEngine.PatchDefinitions.Find(d => string.Equals(d.Name, PatchDefinitionName, StringComparison.CurrentCultureIgnoreCase));
             if (PatchDefinition == null)
             {
-                PatchDefinition = new PatchDefinition();
-                PatchDefinition.Name = PatchDefinitionName;
+                PatchDefinition = new PatchDefinition
+                {
+                    Name = PatchDefinitionName
+                };
                 PatchEngine.PatchDefinitions.Add(PatchDefinition);
             }
-            TargetVersion TargetVersion = PatchDefinition.TargetVersions.Where(v => (string.Compare(v.Description, PatchDefinitionVersion, true) == 0)).FirstOrDefault();
+            TargetVersion TargetVersion = PatchDefinition.TargetVersions.Find(v => string.Equals(v.Description, PatchDefinitionVersion, StringComparison.CurrentCultureIgnoreCase));
             if (TargetVersion == null)
             {
-                TargetVersion = new TargetVersion();
-                TargetVersion.Description = PatchDefinitionVersion;
+                TargetVersion = new TargetVersion
+                {
+                    Description = PatchDefinitionVersion
+                };
                 PatchDefinition.TargetVersions.Add(TargetVersion);
             }
-            TargetFile TargetFile = TargetVersion.TargetFiles.Where(f => ((f.Path != null) && (string.Compare(f.Path.TrimStart(new char[] { '\\' }), Path.TrimStart(new char[] { '\\' }), true) == 0))).FirstOrDefault();
+            TargetFile TargetFile = TargetVersion.TargetFiles.Find(f => (f.Path != null) && (string.Equals(f.Path.TrimStart(new char[] { '\\' }), Path.TrimStart(new char[] { '\\' }), StringComparison.CurrentCultureIgnoreCase)));
             if (TargetFile != null)
                 TargetVersion.TargetFiles.Remove(TargetFile); // Remove any old patches for this file
             TargetFile = new TargetFile();
             TargetVersion.TargetFiles.Add(TargetFile);
             TargetFile.Path = Path.TrimStart(new char[] { '\\' });
-            SHA1Managed SHA = new SHA1Managed();
+            SHA1Managed SHA = new();
             TargetFile.HashOriginal = SHA.ComputeHash(AnalyzedFile.File.Buffer);
             FilePatchCollection = TargetFile;
 
@@ -610,7 +588,7 @@ namespace Patcher
             if (AnalyzedFile != null)
             {
                 // Update hash in patch definition
-                SHA1Managed SHA = new SHA1Managed();
+                SHA1Managed SHA = new();
                 FilePatchCollection.HashPatched = SHA.ComputeHash(FileBuffer);
                 WriteLog("New hash for patched file: " + Converter.ConvertHexToString(FilePatchCollection.HashPatched, ""));
 
@@ -640,12 +618,14 @@ namespace Patcher
             System.Buffer.BlockCopy(Bytes, 0, FileBuffer, (int)RawOffset, Bytes.Length);
 
             // Add patch to defintions (original and patched bytes)
-            Patch CurrentPatch = FilePatchCollection.Patches.Where(p => p.Address == RawOffset).FirstOrDefault();
+            Patch CurrentPatch = FilePatchCollection.Patches.Find(p => p.Address == RawOffset);
             if (CurrentPatch == null)
             {
-                CurrentPatch = new Patch();
-                CurrentPatch.Address = RawOffset;
-                CurrentPatch.OriginalBytes = Original;
+                CurrentPatch = new Patch
+                {
+                    Address = RawOffset,
+                    OriginalBytes = Original
+                };
                 FilePatchCollection.Patches.Add(CurrentPatch);
             }
             CurrentPatch.PatchedBytes = Bytes;
@@ -674,14 +654,16 @@ namespace Patcher
 
             WriteLog("Looking for ascii string: " + SearchString);
             UInt32? FindIndex = ByteOperations.FindAscii(FileBuffer, AnalyzedFile.File.ConvertVirtualAddressToRawOffset(CurrentVirtualAddressTarget), SearchString);
-            FindSuccess = (FindIndex != null);
+            FindSuccess = FindIndex != null;
             if (FindIndex != null)
             {
                 CurrentVirtualAddressTarget = AnalyzedFile.File.ConvertRawOffsetToVirtualAddress((UInt32)FindIndex);
                 WriteLog("Ascii string found at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
             }
             else
+            {
                 WriteLog("String not found");
+            }
         }
 
         private static void FindAscii(string SearchString)
@@ -703,14 +685,16 @@ namespace Patcher
 
             WriteLog("Looking for unicode string: " + SearchString);
             UInt32? FindIndex = ByteOperations.FindUnicode(FileBuffer, AnalyzedFile.File.ConvertVirtualAddressToRawOffset(CurrentVirtualAddressTarget), SearchString);
-            FindSuccess = (FindIndex != null);
+            FindSuccess = FindIndex != null;
             if (FindIndex != null)
             {
                 CurrentVirtualAddressTarget = AnalyzedFile.File.ConvertRawOffsetToVirtualAddress((UInt32)FindIndex);
                 WriteLog("Unicode string found at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
             }
             else
+            {
                 WriteLog("String not found");
+            }
         }
 
         private static void FindUnicode(string SearchString)
@@ -733,14 +717,16 @@ namespace Patcher
             WriteLog("Looking for bytes: " + SearchString);
             byte[] Bytes = GetBytesFromString(SearchString);
             UInt32? FindIndex = ByteOperations.FindPattern(FileBuffer, AnalyzedFile.File.ConvertVirtualAddressToRawOffset(CurrentVirtualAddressTarget), null, Bytes, null, null);
-            FindSuccess = (FindIndex != null);
+            FindSuccess = FindIndex != null;
             if (FindIndex != null)
             {
                 CurrentVirtualAddressTarget = AnalyzedFile.File.ConvertRawOffsetToVirtualAddress((UInt32)FindIndex);
                 WriteLog("Binary search pattern found at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
             }
             else
+            {
                 WriteLog("Binary search pattern not found");
+            }
         }
 
         private static void FindBytes(string SearchString)
@@ -755,7 +741,7 @@ namespace Patcher
             {
                 char CurrentChar = Bytes[i];
                 if (((CurrentChar < '0') || (CurrentChar > '9')) && ((CurrentChar < 'A') || (CurrentChar > 'F')))
-                    Bytes = Bytes.Substring(0, i) + Bytes.Substring(i + 1);
+                    Bytes = Bytes.Substring(0, i) + Bytes[(i + 1)..];
             }
             if ((Bytes.Length % 2) > 0)
                 throw new ScriptExecutionException("Not a valid binary search string: " + Bytes);
@@ -774,8 +760,8 @@ namespace Patcher
             int FoundIndex = -1;
             for (int i = 0; i < AnalyzedFile.Code.Count; i++)
             {
-                if ((AnalyzedFile.Code.Values[i].Operand.IndexOf("#0x" + CurrentVirtualAddressTarget.ToString("X8"), StringComparison.OrdinalIgnoreCase) >= 0) ||
-                    (AnalyzedFile.Code.Values[i].Operand.IndexOf("#0x" + CurrentVirtualAddressTarget.ToString("X"), StringComparison.OrdinalIgnoreCase) >= 0))
+                if ((AnalyzedFile.Code.Values[i].Operand.Contains("#0x" + CurrentVirtualAddressTarget.ToString("X8"), StringComparison.OrdinalIgnoreCase)) ||
+                    (AnalyzedFile.Code.Values[i].Operand.Contains("#0x" + CurrentVirtualAddressTarget.ToString("X"), StringComparison.OrdinalIgnoreCase)))
                 {
                     // Reference found. Now check criteria.
                     bool Match = false;
@@ -798,7 +784,7 @@ namespace Patcher
 
                     if (R0 != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = R0;
                         Match = false;
                         int j = i - 1;
@@ -819,7 +805,7 @@ namespace Patcher
 
                     if (R1 != null)
                     {
-                        string Register = "r1";
+                        const string Register = "r1";
                         string Pattern = R1;
                         Match = false;
                         int j = i - 1;
@@ -840,7 +826,7 @@ namespace Patcher
 
                     if (R2 != null)
                     {
-                        string Register = "r2";
+                        const string Register = "r2";
                         string Pattern = R2;
                         Match = false;
                         int j = i - 1;
@@ -861,7 +847,7 @@ namespace Patcher
 
                     if (R3 != null)
                     {
-                        string Register = "r3";
+                        const string Register = "r3";
                         string Pattern = R3;
                         Match = false;
                         int j = i - 1;
@@ -882,14 +868,14 @@ namespace Patcher
 
                     if (Result != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = Result;
                         Match = false;
                         int j = i + 1;
                         do
                         {
                             List<Token> Tokens = ArmThumbTokenizer(AnalyzedFile.Code.Values[j].Operand);
-                            if ((Tokens.Count > 0) && (Tokens.Any(t => t.Text == Register)))
+                            if ((Tokens.Count > 0) && Tokens.Any(t => t.Text == Register))
                             {
                                 Match = MatchPattern(AnalyzedFile.Code.Values[j], Pattern);
                                 break;
@@ -954,7 +940,7 @@ namespace Patcher
                 if (PatternTokens[i].Text == "?")
                     continue;
 
-                if ((PatternTokens[i].Text == "r?") && (InstructionTokens[i].Text.StartsWith("r")))
+                if ((PatternTokens[i].Text == "r?") && InstructionTokens[i].Text.StartsWith("r"))
                     continue;
 
                 if (PatternTokens[i].Text == InstructionTokens[i].Text)
@@ -983,7 +969,7 @@ namespace Patcher
 
             WriteLog("Looking for instruction-pattern");
 
-            List<List<Token>> PatternTokens = new List<List<Token>>();
+            List<List<Token>> PatternTokens = new();
             string[] PatternInstructions = Pattern.Split(new char[] { ';' });
             for (int i = 0; i < PatternInstructions.Length; i++)
                 PatternTokens.Add(ArmThumbTokenizer(PatternInstructions[i]));
@@ -1021,7 +1007,7 @@ namespace Patcher
 
             WriteLog("Looking for instruction-pattern");
 
-            List<List<Token>> PatternTokens = new List<List<Token>>();
+            List<List<Token>> PatternTokens = new();
             string[] PatternInstructions = Pattern.Split(new char[] { ';' });
             for (int i = 0; i < PatternInstructions.Length; i++)
                 PatternTokens.Add(ArmThumbTokenizer(PatternInstructions[i]));
@@ -1078,12 +1064,12 @@ namespace Patcher
 
                 int Index = AnalyzedFile.Code.Values[i].Operand.IndexOf("#0x");
                 if (Index >= 0)
-                    GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand.Substring(Index + 3).TrimEnd(new char[] { ']' }), System.Globalization.NumberStyles.HexNumber, null, out FoundValue);
+                    GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand[(Index + 3)..].TrimEnd(new char[] { ']' }), System.Globalization.NumberStyles.HexNumber, null, out FoundValue);
                 if (!GotValue)
                 {
                     Index = AnalyzedFile.Code.Values[i].Operand.IndexOf("#");
                     if (Index >= 0)
-                        GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand.Substring(Index + 1).TrimEnd(new char[] { ']' }), out FoundValue);
+                        GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand[(Index + 1)..].TrimEnd(new char[] { ']' }), out FoundValue);
                 }
                 if (GotValue && (FoundValue == Value))
                 {
@@ -1112,12 +1098,12 @@ namespace Patcher
 
                 int Index = AnalyzedFile.Code.Values[i].Operand.IndexOf("#0x");
                 if (Index >= 0)
-                    GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand.Substring(Index + 3).TrimEnd(new char[] { ']' }), System.Globalization.NumberStyles.HexNumber, null, out FoundValue);
+                    GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand[(Index + 3)..].TrimEnd(new char[] { ']' }), System.Globalization.NumberStyles.HexNumber, null, out FoundValue);
                 if (!GotValue)
                 {
                     Index = AnalyzedFile.Code.Values[i].Operand.IndexOf("#");
                     if (Index >= 0)
-                        GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand.Substring(Index + 1).TrimEnd(new char[] { ']' }), out FoundValue);
+                        GotValue = UInt32.TryParse(AnalyzedFile.Code.Values[i].Operand[(Index + 1)..].TrimEnd(new char[] { ']' }), out FoundValue);
                 }
                 if (GotValue && (FoundValue == Value))
                 {
@@ -1180,7 +1166,7 @@ namespace Patcher
             FindSuccess = false;
             WriteLog("Conditional jump not found");
         }
-        
+
         private static void MakeJumpUnconditional(string Instruction)
         {
             if (AnalyzedFile == null)
@@ -1189,10 +1175,10 @@ namespace Patcher
             ArmInstruction CurrentInstruction = AnalyzedFile.Code[CurrentVirtualAddressTarget];
             if (ArmDisassembler.ConditionalJumpInstructions.Contains(CurrentInstruction.Mnemonic))
             {
-                if ((Instruction == null) || (string.Compare(Instruction, CurrentInstruction.Mnemonic, true) == 0) || (string.Compare(Instruction + ".w", CurrentInstruction.Mnemonic, true) == 0))
+                if ((Instruction == null) || (string.Equals(Instruction, CurrentInstruction.Mnemonic, StringComparison.CurrentCultureIgnoreCase)) || (string.Equals(Instruction + ".w", CurrentInstruction.Mnemonic, StringComparison.CurrentCultureIgnoreCase)))
                 {
                     WriteLog("Making instruction unconditional at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
-                    string AddressString = CurrentInstruction.Operand.Substring(CurrentInstruction.Operand.IndexOf("#0x") + 3);
+                    string AddressString = CurrentInstruction.Operand[(CurrentInstruction.Operand.IndexOf("#0x") + 3)..];
                     UInt32 Address = Convert.ToUInt32(AddressString, 16);
                     string NewInstruction = CurrentInstruction.Mnemonic.EndsWith(".w") ? "b.w" : "b";
                     WriteLog("    Original: " + CurrentInstruction.Mnemonic + " " + CurrentInstruction.Operand);
@@ -1207,7 +1193,7 @@ namespace Patcher
                     WriteLog("Looking for conditional jump: " + Instruction);
                     WriteLog("Instead this conditional jump was found: " + CurrentInstruction.Mnemonic + " " + CurrentInstruction.Operand);
                     WriteLog("Instead of making the jump unconditional, the jump will be cleared");
-                    string NewInstruction = (CurrentInstruction.Bytes.Count() == 2) ? "nop" : "nop.w";
+                    string NewInstruction = (CurrentInstruction.Bytes.Length == 2) ? "nop" : "nop.w";
                     WriteLog("Patch: " + NewInstruction);
                     byte[] CompiledCode = Compile(NewInstruction);
                     PatchAtVirtualAddress(CompiledCode, CurrentVirtualAddressTarget);
@@ -1215,7 +1201,9 @@ namespace Patcher
                 }
             }
             else
+            {
                 throw new ScriptExecutionException("Instruction cannot be made unconditional because it isn't a jump-instruction");
+            }
         }
 
         private static void PatchChecksum()
@@ -1239,25 +1227,17 @@ namespace Patcher
             Patcher.CodeType PatcherCodeType = Patcher.CodeType.Thumb2;
             if (CodeType != null)
             {
-                switch (CodeType.ToLower())
+                PatcherCodeType = CodeType.ToLower() switch
                 {
-                    case "arm":
-                        PatcherCodeType = Patcher.CodeType.ARM;
-                        break;
-                    case "thumb":
-                        PatcherCodeType = Patcher.CodeType.Thumb;
-                        break;
-                    case "thumb2":
-                        PatcherCodeType = Patcher.CodeType.Thumb2;
-                        break;
-                    default:
-                        throw new ScriptExecutionException("Invalid Assembly Type");
-                }
+                    "arm" => Patcher.CodeType.ARM,
+                    "thumb" => Patcher.CodeType.Thumb,
+                    "thumb2" => Patcher.CodeType.Thumb2,
+                    _ => throw new ScriptExecutionException("Invalid Assembly Type"),
+                };
             }
 
             WriteLog("Compiling new code at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
-            byte[] CompiledCode = null;
-            CompiledCode = Compile(PatcherCodeType, AsmCode);
+            byte[] CompiledCode = Compile(PatcherCodeType, AsmCode);
             PatchAtVirtualAddress(CompiledCode, CurrentVirtualAddressTarget);
 
             CurrentVirtualAddressTarget += (UInt32)CompiledCode.Length;
@@ -1281,9 +1261,11 @@ namespace Patcher
             if (AnalyzedFile == null)
                 throw new ScriptExecutionException("PatchFile not defined");
 
-            FunctionDescriptor Import = AnalyzedFile.File.Imports.Where(i => string.Compare(i.Name, FunctionName, true) == 0).FirstOrDefault();
+            FunctionDescriptor Import = AnalyzedFile.File.Imports.Find(i => string.Equals(i.Name, FunctionName, StringComparison.CurrentCultureIgnoreCase));
             if (Import == null)
+            {
                 throw new ScriptExecutionException("Import not found: " + FunctionName);
+            }
             else
             {
                 WriteLog("Import " + FunctionName + " found at: 0x" + Import.VirtualAddress.ToString("X8"));
@@ -1297,9 +1279,11 @@ namespace Patcher
             if (AnalyzedFile == null)
                 throw new ScriptExecutionException("PatchFile not defined");
 
-            FunctionDescriptor Export = AnalyzedFile.File.Exports.Where(i => string.Compare(i.Name, FunctionName, true) == 0).FirstOrDefault();
+            FunctionDescriptor Export = AnalyzedFile.File.Exports.Find(i => string.Equals(i.Name, FunctionName, StringComparison.CurrentCultureIgnoreCase));
             if (Export == null)
+            {
                 throw new ScriptExecutionException("Export not found: " + FunctionName);
+            }
             else
             {
                 WriteLog("Export " + FunctionName + " found at: 0x" + Export.VirtualAddress.ToString("X8"));
@@ -1316,7 +1300,7 @@ namespace Patcher
             WriteLog("Looking for previous instruction: " + Instruction);
             for (int i = AnalyzedFile.Code.IndexOfKey(CurrentVirtualAddressTarget) - 1; i >= 0; i--)
             {
-                if ((string.Compare(Instruction, AnalyzedFile.Code.Values[i].Mnemonic, true) == 0) || (string.Compare(Instruction + ".W", AnalyzedFile.Code.Values[i].Mnemonic, true) == 0))
+                if ((string.Equals(Instruction, AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)) || (string.Equals(Instruction + ".W", AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)))
                 {
                     FindSuccess = true;
                     CurrentVirtualAddressTarget = AnalyzedFile.Code.Values[i].Address;
@@ -1337,7 +1321,7 @@ namespace Patcher
             WriteLog("Looking for instruction: " + Instruction);
             for (int i = AnalyzedFile.Code.IndexOfKey(CurrentVirtualAddressTarget) + 1; i < AnalyzedFile.Code.Count; i++)
             {
-                if ((string.Compare(Instruction, AnalyzedFile.Code.Values[i].Mnemonic, true) == 0) || (string.Compare(Instruction + ".W", AnalyzedFile.Code.Values[i].Mnemonic, true) == 0))
+                if ((string.Equals(Instruction, AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)) || (string.Equals(Instruction + ".W", AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)))
                 {
                     FindSuccess = true;
                     CurrentVirtualAddressTarget = AnalyzedFile.Code.Values[i].Address;
@@ -1360,7 +1344,7 @@ namespace Patcher
             if (AnalyzedFile == null)
                 throw new ScriptExecutionException("PatchFile not defined");
 
-            if (Labels.Any(l => string.Compare(l.Name, Label, true) == 0))
+            if (Labels.Any(l => string.Equals(l.Name, Label, StringComparison.CurrentCultureIgnoreCase)))
                 throw new ScriptExecutionException("Label already exists: " + Label);
 
             Labels.Add(new FunctionDescriptor() { Name = Label, VirtualAddress = CurrentVirtualAddressTarget });
@@ -1384,7 +1368,7 @@ namespace Patcher
 
             string CurrentInstruction = AnalyzedFile.Code[CurrentVirtualAddressTarget].Mnemonic;
             WriteLog("Current instruction: " + CurrentInstruction);
-            if ((string.Compare(CurrentInstruction, Instruction, true) == 0) || (string.Compare(CurrentInstruction, Instruction + ".w", true) == 0))
+            if ((string.Equals(CurrentInstruction, Instruction, StringComparison.CurrentCultureIgnoreCase)) || (string.Equals(CurrentInstruction, Instruction + ".w", StringComparison.CurrentCultureIgnoreCase)))
                 Go(Label);
         }
 
@@ -1395,7 +1379,7 @@ namespace Patcher
 
             ArmInstruction CurrentInstruction = AnalyzedFile.Code[CurrentVirtualAddressTarget];
             WriteLog("clearing instruction at virtual address: 0x" + CurrentVirtualAddressTarget.ToString("X8"));
-            string Instruction = (CurrentInstruction.Bytes.Count() == 2) ? "nop" : "nop.w";
+            string Instruction = (CurrentInstruction.Bytes.Length == 2) ? "nop" : "nop.w";
             WriteLog("    Original: " + CurrentInstruction.Mnemonic + " " + CurrentInstruction.Operand);
             WriteLog("    Patch:    " + Instruction);
             byte[] CompiledCode = Compile(Instruction);
@@ -1422,9 +1406,11 @@ namespace Patcher
             if (AnalyzedFile == null)
                 throw new ScriptExecutionException("PatchFile not defined");
 
-            CodeLine NewLine = ScriptCode.Where(l => (string.Compare(l.Label, Label, true) == 0)).FirstOrDefault();
+            CodeLine NewLine = ScriptCode.Find(l => string.Equals(l.Label, Label, StringComparison.CurrentCultureIgnoreCase));
             if (NewLine == null)
+            {
                 throw new ScriptExecutionException("Label " + Label + " not found");
+            }
             else
             {
                 Pointer = ScriptCode.IndexOf(NewLine);
@@ -1464,9 +1450,8 @@ namespace Patcher
                 throw new ScriptExecutionException("PatchFile not defined");
 
             ArmInstruction CurrentInstruction = AnalyzedFile.Code[CurrentVirtualAddressTarget];
-            string AddressString = CurrentInstruction.Operand.Substring(CurrentInstruction.Operand.IndexOf("#0x") + 3);
-            UInt32 Address;
-            if (UInt32.TryParse(AddressString, System.Globalization.NumberStyles.HexNumber, null, out Address))
+            string AddressString = CurrentInstruction.Operand[(CurrentInstruction.Operand.IndexOf("#0x") + 3)..];
+            if (UInt32.TryParse(AddressString, System.Globalization.NumberStyles.HexNumber, null, out uint Address))
             {
                 if (AnalyzedFile.File.GetSectionForVirtualAddress(Address) == null)
                     throw new ScriptExecutionException("Target at virtual address 0x" + Address.ToString("X8") + " is invalid");
@@ -1475,7 +1460,9 @@ namespace Patcher
                 CurrentVirtualAddressTarget = Address;
             }
             else
+            {
                 throw new ScriptExecutionException("Could not jump to target: " + CurrentInstruction.Operand);
+            }
         }
 
         private static void JumpToLabel(string Label)
@@ -1483,7 +1470,7 @@ namespace Patcher
             if (AnalyzedFile == null)
                 throw new ScriptExecutionException("PatchFile not defined");
 
-            FunctionDescriptor FoundLabel = Labels.Where(l => (string.Compare(l.Name, Label, true) == 0)).FirstOrDefault();
+            FunctionDescriptor FoundLabel = Labels.Find(l => string.Equals(l.Name, Label, StringComparison.CurrentCultureIgnoreCase));
             if (FoundLabel == null)
                 throw new ScriptExecutionException("Label not found: " + Label);
 
@@ -1500,7 +1487,7 @@ namespace Patcher
 
             if (FindSuccess)
             {
-                FunctionDescriptor FoundLabel = Labels.Where(l => (string.Compare(l.Name, Label, true) == 0)).FirstOrDefault();
+                FunctionDescriptor FoundLabel = Labels.Find(l => string.Equals(l.Name, Label, StringComparison.CurrentCultureIgnoreCase));
                 if (FoundLabel == null)
                     throw new ScriptExecutionException("Label not found: " + Label);
 
@@ -1517,7 +1504,7 @@ namespace Patcher
 
             if (!FindSuccess)
             {
-                FunctionDescriptor FoundLabel = Labels.Where(l => (string.Compare(l.Name, Label, true) == 0)).FirstOrDefault();
+                FunctionDescriptor FoundLabel = Labels.Find(l => string.Equals(l.Name, Label, StringComparison.CurrentCultureIgnoreCase));
                 if (FoundLabel == null)
                     throw new ScriptExecutionException("Label not found: " + Label);
 
@@ -1574,7 +1561,7 @@ namespace Patcher
                 throw new ScriptExecutionException("PatchFile not defined");
 
             string Operand = AnalyzedFile.Code[CurrentVirtualAddressTarget].Operand;
-            if (Operand.IndexOf(',') >= 0)
+            if (Operand.Contains(','))
             {
                 string Register = Operand.Substring(0, Operand.IndexOf(',')).Trim();
                 if (Register.StartsWith("r"))
@@ -1583,10 +1570,10 @@ namespace Patcher
 
                     for (int i = AnalyzedFile.Code.IndexOfKey(CurrentVirtualAddressTarget) + 1; i < AnalyzedFile.Code.Count; i++)
                     {
-                        if ((string.Compare("str", AnalyzedFile.Code.Values[i].Mnemonic, true) == 0) || (string.Compare("str.w", AnalyzedFile.Code.Values[i].Mnemonic, true) == 0))
+                        if ((string.Equals("str", AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)) || (string.Equals("str.w", AnalyzedFile.Code.Values[i].Mnemonic, StringComparison.CurrentCultureIgnoreCase)))
                         {
                             Operand = AnalyzedFile.Code.Values[i].Operand;
-                            if (Operand.IndexOf(',') >= 0)
+                            if (Operand.Contains(','))
                             {
                                 if (Register == Operand.Substring(0, Operand.IndexOf(',')).Trim())
                                 {
@@ -1603,10 +1590,14 @@ namespace Patcher
                     WriteLog("Instruction not found");
                 }
                 else
+                {
                     throw new ScriptExecutionException("Could not locate register to search for");
+                }
             }
             else
+            {
                 throw new ScriptExecutionException("Could not locate register to search for");
+            }
         }
 
         private static void FindFunctionCall(string R0, string R1, string R2, string R3, string Result)
@@ -1629,7 +1620,7 @@ namespace Patcher
 
                     if (R0 != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = R0;
                         Match = false;
                         int j = i - 1;
@@ -1650,7 +1641,7 @@ namespace Patcher
 
                     if (R1 != null)
                     {
-                        string Register = "r1";
+                        const string Register = "r1";
                         string Pattern = R1;
                         Match = false;
                         int j = i - 1;
@@ -1671,7 +1662,7 @@ namespace Patcher
 
                     if (R2 != null)
                     {
-                        string Register = "r2";
+                        const string Register = "r2";
                         string Pattern = R2;
                         Match = false;
                         int j = i - 1;
@@ -1692,7 +1683,7 @@ namespace Patcher
 
                     if (R3 != null)
                     {
-                        string Register = "r3";
+                        const string Register = "r3";
                         string Pattern = R3;
                         Match = false;
                         int j = i - 1;
@@ -1713,14 +1704,14 @@ namespace Patcher
 
                     if (Result != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = Result;
                         Match = false;
                         int j = i + 1;
                         do
                         {
                             List<Token> Tokens = ArmThumbTokenizer(AnalyzedFile.Code.Values[j].Operand);
-                            if ((Tokens.Count > 0) && (Tokens.Any(t => t.Text == Register)))
+                            if ((Tokens.Count > 0) && Tokens.Any(t => t.Text == Register))
                             {
                                 Match = MatchPattern(AnalyzedFile.Code.Values[j], Pattern);
                                 break;
@@ -1758,7 +1749,7 @@ namespace Patcher
 
                     if (R0 != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = R0;
                         Match = false;
                         int j = i - 1;
@@ -1779,7 +1770,7 @@ namespace Patcher
 
                     if (R1 != null)
                     {
-                        string Register = "r1";
+                        const string Register = "r1";
                         string Pattern = R1;
                         Match = false;
                         int j = i - 1;
@@ -1800,7 +1791,7 @@ namespace Patcher
 
                     if (R2 != null)
                     {
-                        string Register = "r2";
+                        const string Register = "r2";
                         string Pattern = R2;
                         Match = false;
                         int j = i - 1;
@@ -1821,7 +1812,7 @@ namespace Patcher
 
                     if (R3 != null)
                     {
-                        string Register = "r3";
+                        const string Register = "r3";
                         string Pattern = R3;
                         Match = false;
                         int j = i - 1;
@@ -1842,14 +1833,14 @@ namespace Patcher
 
                     if (Result != null)
                     {
-                        string Register = "r0";
+                        const string Register = "r0";
                         string Pattern = Result;
                         Match = false;
                         int j = i + 1;
                         do
                         {
                             List<Token> Tokens = ArmThumbTokenizer(AnalyzedFile.Code.Values[j].Operand);
-                            if ((Tokens.Count > 0) && (Tokens.Any(t => t.Text == Register)))
+                            if ((Tokens.Count > 0) && Tokens.Any(t => t.Text == Register))
                             {
                                 Match = MatchPattern(AnalyzedFile.Code.Values[j], Pattern);
                                 break;
@@ -1901,6 +1892,14 @@ namespace Patcher
         public ScriptParserException(string Message): base(Message)
         {
         }
+
+        public ScriptParserException() : base()
+        {
+        }
+
+        public ScriptParserException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
     }
 
     public class ScriptExecutionException: Exception
@@ -1912,10 +1911,16 @@ namespace Patcher
         public ScriptExecutionException(string Message, Exception InnerException) : base(Message, InnerException)
         {
         }
+
+        public ScriptExecutionException() : base()
+        {
+        }
     }
 
-    // Extension method by: Oleg Zarevennyi
-    // https://stackoverflow.com/a/45756981
+    /// <summary>
+    /// Extension method by: Oleg Zarevennyi
+    /// https://stackoverflow.com/a/45756981
+    /// </summary>
     static public class StringExtensions
     {
         public static string Replace(this string str, string oldValue, string @newValue, StringComparison comparisonType)
@@ -1937,7 +1942,7 @@ namespace Patcher
                 throw new ArgumentException("String cannot be of zero length.");
             }
 
-            StringBuilder resultStringBuilder = new StringBuilder(str.Length);
+            StringBuilder resultStringBuilder = new(str.Length);
             bool isReplacementNullOrEmpty = string.IsNullOrEmpty(@newValue);
 
             const int valueNotFound = -1;

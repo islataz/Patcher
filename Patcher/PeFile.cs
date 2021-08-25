@@ -195,9 +195,18 @@ namespace Patcher
         public UInt32 Base;
         public UInt32 NumberOfFunctions;
         public UInt32 NumberOfNames;
-        public UInt32 AddressOfFunctions;     // RVA from base of image
-        public UInt32 AddressOfNames;     // RVA from base of image
-        public UInt32 AddressOfNameOrdinals;  // RVA from base of image
+        /// <summary>
+        /// RVA from base of image
+        /// </summary>
+        public UInt32 AddressOfFunctions;
+        /// <summary>
+        /// RVA from base of image
+        /// </summary>
+        public UInt32 AddressOfNames;
+        /// <summary>
+        /// RVA from base of image
+        /// </summary>
+        public UInt32 AddressOfNameOrdinals;
     }
 
     [StructLayout(LayoutKind.Explicit)]
@@ -207,11 +216,13 @@ namespace Patcher
         /// <summary>
         /// CSharp doesnt really support unions, but they can be emulated by a field offset 0
         /// </summary>
-
         [FieldOffset(0)]
         public uint Characteristics;            // 0 for terminating null import descriptor
+        /// <summary>
+        /// RVA to original unbound IAT (PIMAGE_THUNK_DATA)
+        /// </summary>
         [FieldOffset(0)]
-        public uint OriginalFirstThunk;         // RVA to original unbound IAT (PIMAGE_THUNK_DATA)
+        public uint OriginalFirstThunk;
         #endregion
 
         [FieldOffset(4)]
@@ -247,27 +258,90 @@ namespace Patcher
 
     internal enum ResourceType
     {
-        RT_ACCELERATOR = 9, //Accelerator table.
-        RT_ANICURSOR = 21, //Animated cursor.
-        RT_ANIICON = 22, //Animated icon.
-        RT_BITMAP = 2, //Bitmap resource.
-        RT_CURSOR = 1, //Hardware-dependent cursor resource.
-        RT_DIALOG = 5, //Dialog box.
-        RT_DLGINCLUDE = 17, //Allows
-        RT_FONT = 8, //Font resource.
-        RT_FONTDIR = 7, //Font directory resource.
-        RT_GROUP_CURSOR = ((RT_CURSOR) + 11), //Hardware-independent cursor resource.
-        RT_GROUP_ICON = ((RT_ICON) + 11), //Hardware-independent icon resource.
-        RT_HTML = 23, //HTML resource.
-        RT_ICON = 3, //Hardware-dependent icon resource.
-        RT_MANIFEST = 24, //Side-by-Side Assembly Manifest.
-        RT_MENU = 4, //Menu resource.
-        RT_MESSAGETABLE = 11, //Message-table entry.
-        RT_PLUGPLAY = 19, //Plug and Play resource.
-        RT_RCDATA = 10, //Application-defined resource (raw data).
-        RT_STRING = 6, //String-table entry.
-        RT_VERSION = 16, //Version resource.
-        RT_VXD = 20, //
+        /// <summary>
+        /// Accelerator table.
+        /// </summary>
+        RT_ACCELERATOR = 9,
+        /// <summary>
+        /// Animated cursor.
+        /// </summary>
+        RT_ANICURSOR = 21,
+        /// <summary>
+        /// Animated icon.
+        /// </summary>
+        RT_ANIICON = 22,
+        /// <summary>
+        /// Bitmap resource.
+        /// </summary>
+        RT_BITMAP = 2,
+        /// <summary>
+        /// Hardware-dependent cursor resource.
+        /// </summary>
+        RT_CURSOR = 1,
+        /// <summary>
+        /// Dialog box.
+        /// </summary>
+        RT_DIALOG = 5,
+        /// <summary>
+        /// Allows
+        /// </summary>
+        RT_DLGINCLUDE = 17,
+        /// <summary>
+        /// Font resource.
+        /// </summary>
+        RT_FONT = 8,
+        /// <summary>
+        /// Font directory resource.
+        /// </summary>
+        RT_FONTDIR = 7,
+        /// <summary>
+        /// Hardware-independent cursor resource.
+        /// </summary>
+        RT_GROUP_CURSOR = RT_CURSOR + 11,
+        /// <summary>
+        /// Hardware-independent icon resource.
+        /// </summary>
+        RT_GROUP_ICON = RT_ICON + 11,
+        /// <summary>
+        /// HTML resource.
+        /// </summary>
+        RT_HTML = 23,
+        /// <summary>
+        /// Hardware-dependent icon resource.
+        /// </summary>
+        RT_ICON = 3,
+        /// <summary>
+        /// Side-by-Side Assembly Manifest.
+        /// </summary>
+        RT_MANIFEST = 24,
+        /// <summary>
+        /// Menu resource.
+        /// </summary>
+        RT_MENU = 4,
+        /// <summary>
+        /// Message-table entry.
+        /// </summary>
+        RT_MESSAGETABLE = 11,
+        /// <summary>
+        /// Plug and Play resource.
+        /// </summary>
+        RT_PLUGPLAY = 19,
+        /// <summary>
+        /// Application-defined resource (raw data).
+        /// </summary>
+        RT_RCDATA = 10,
+        /// <summary>
+        /// String-table entry.
+        /// </summary>
+        RT_STRING = 6,
+        /// <summary>
+        /// Version resource.
+        /// </summary>
+        RT_VERSION = 16,
+        /// <summary>
+        /// VXD
+        /// </summary>
+        RT_VXD = 20,
         RT_DLGINIT = 240,
         RT_TOOLBAR = 241
     };
@@ -282,10 +356,10 @@ namespace Patcher
         public IMAGE_NT_HEADERS NtHeaders;
         private readonly IList<IMAGE_SECTION_HEADER> _sectionHeaders = new List<IMAGE_SECTION_HEADER>();
 
-        public List<Section> Sections = new List<Section>();
-        public List<FunctionDescriptor> Exports = new List<FunctionDescriptor>();
-        public List<FunctionDescriptor> Imports = new List<FunctionDescriptor>();
-        public List<FunctionDescriptor> RuntimeFunctions = new List<FunctionDescriptor>();
+        public List<Section> Sections = new();
+        public List<FunctionDescriptor> Exports = new();
+        public List<FunctionDescriptor> Imports = new();
+        public List<FunctionDescriptor> RuntimeFunctions = new();
         public byte[] Buffer;
         public UInt64 ImageBase;
         public UInt64 EntryPoint;
@@ -357,14 +431,14 @@ namespace Patcher
                 byte[] RawCode = new byte[s.SizeOfRawData];
                 System.Buffer.BlockCopy(Buffer, (int)s.PointerToRawData, RawCode, 0, (int)s.SizeOfRawData);
 
-                Sections.Add(new Section { Header = s, Buffer = RawCode, VirtualAddress = s.VirtualAddress + (UInt32)ImageBase, VirtualSize = s.Misc.VirtualSize, IsCode = ((s.Characteristics & (uint)Constants.SectionFlags.IMAGE_SCN_CNT_CODE) != 0) });
+                Sections.Add(new Section { Header = s, Buffer = RawCode, VirtualAddress = s.VirtualAddress + (UInt32)ImageBase, VirtualSize = s.Misc.VirtualSize, IsCode = (s.Characteristics & (uint)Constants.SectionFlags.IMAGE_SCN_CNT_CODE) != 0 });
             });
 
             // Read Exports
             // TODO: Proper support for 64-bit files
             if (ExportDirectoryVirtualOffset != 0)
             {
-                IMAGE_EXPORT_DIRECTORY ExportDirectory = MarshalBytesTo<IMAGE_EXPORT_DIRECTORY>(Buffer, (int)ConvertVirtualOffsetToRawOffset((uint)(ExportDirectoryVirtualOffset)));
+                IMAGE_EXPORT_DIRECTORY ExportDirectory = MarshalBytesTo<IMAGE_EXPORT_DIRECTORY>(Buffer, (int)ConvertVirtualOffsetToRawOffset((uint)ExportDirectoryVirtualOffset));
                 if (ExportDirectory.AddressOfNames != 0)
                 {
                     Section ExportsSection = GetSectionForVirtualAddress((uint)(ImageBase + ExportDirectory.AddressOfNames));
@@ -385,7 +459,7 @@ namespace Patcher
                     for (int i = 0; i < ExportDirectory.NumberOfFunctions; i++)
                     {
                         VirtualAddresses[i] = ByteOperations.ReadUInt32(ExportsSection.Buffer, (UInt32)(OffsetFunctions + (i * sizeof(UInt32))));
-                        VirtualAddresses[i] -= (VirtualAddresses[i] % 2); // Round down for Thumb2
+                        VirtualAddresses[i] -= VirtualAddresses[i] % 2; // Round down for Thumb2
                     }
                     for (int i = 0; i < ExportDirectory.NumberOfNames; i++)
                     {
@@ -519,7 +593,7 @@ namespace Patcher
 
         public bool Is32bitAssembly()
         {
-            return ((NtHeaders.FileHeader.Characteristics & 0x0100) == 0x0100);
+            return (NtHeaders.FileHeader.Characteristics & 0x0100) == 0x0100;
         }
 
         private void Load64bitOptionalHeaders(byte[] Buffer, int Offset)
@@ -564,7 +638,7 @@ namespace Patcher
             if (VirtualOffset < (Sections.OrderBy(s => s.VirtualAddress).First().VirtualAddress - GetOptionalHeaders32().ImageBase))
                 return VirtualOffset;
 
-            IMAGE_SECTION_HEADER? SectionHeaderSelection = _sectionHeaders.Where(h => (((h.VirtualAddress) <= VirtualOffset) && ((h.VirtualAddress + h.SizeOfRawData) > VirtualOffset))).FirstOrDefault();
+            IMAGE_SECTION_HEADER? SectionHeaderSelection = _sectionHeaders.FirstOrDefault(h => (h.VirtualAddress <= VirtualOffset) && ((h.VirtualAddress + h.SizeOfRawData) > VirtualOffset));
             if (SectionHeaderSelection == null)
                 throw new ArgumentOutOfRangeException();
 
@@ -584,10 +658,10 @@ namespace Patcher
         internal uint ConvertRawOffsetToVirtualAddress(uint RawOffset)
         {
             // TODO: Add 64-bit support
-            if (RawOffset < (Sections.OrderBy(s => s.VirtualAddress).First().Header.PointerToRawData))
+            if (RawOffset < Sections.OrderBy(s => s.VirtualAddress).First().Header.PointerToRawData)
                 return RawOffset + GetOptionalHeaders32().ImageBase;
 
-            IMAGE_SECTION_HEADER? SectionHeaderSelection = _sectionHeaders.Where(h => ((h.PointerToRawData <= RawOffset) && ((h.PointerToRawData + h.SizeOfRawData) > RawOffset))).FirstOrDefault();
+            IMAGE_SECTION_HEADER? SectionHeaderSelection = _sectionHeaders.FirstOrDefault(h => (h.PointerToRawData <= RawOffset) && ((h.PointerToRawData + h.SizeOfRawData) > RawOffset));
             if (SectionHeaderSelection == null)
                 throw new ArgumentOutOfRangeException();
 
@@ -601,7 +675,7 @@ namespace Patcher
 
         public Section GetSectionForVirtualAddress(UInt32 VirtualAddress)
         {
-            return Sections.Where(s => ((VirtualAddress >= s.VirtualAddress) && (VirtualAddress < (s.VirtualAddress + s.VirtualSize)))).FirstOrDefault();
+            return Sections.Find(s => (VirtualAddress >= s.VirtualAddress) && (VirtualAddress < (s.VirtualAddress + s.VirtualSize)));
         }
 
         private static T MarshalBytesTo<T>(BinaryReader reader)
@@ -676,7 +750,7 @@ namespace Patcher
                     if (ResourceID == (UInt32)Index[i])
                     {
                         // Check high bit
-                        if (((NextPointer & 0x80000000) == 0) != (i == (Index.Length - 1)))
+                        if ((NextPointer & 0x80000000) == 0 != (i == (Index.Length - 1)))
                             throw new Exception("Bad resource path");
 
                         p = ResourceRawPointer + (NextPointer & 0x7fffffff);
@@ -701,7 +775,7 @@ namespace Patcher
             // RT_VERSION format:
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms647001(v=vs.85).aspx
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms646997(v=vs.85).aspx
-            UInt32 FixedFileInfoPointer = 0x28;
+            const UInt32 FixedFileInfoPointer = 0x28;
             UInt16 Major = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x0A);
             UInt16 Minor = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x08);
             UInt16 Build = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x0E);
@@ -717,7 +791,7 @@ namespace Patcher
             // RT_VERSION format:
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms647001(v=vs.85).aspx
             // https://msdn.microsoft.com/en-us/library/windows/desktop/ms646997(v=vs.85).aspx
-            UInt32 FixedFileInfoPointer = 0x28;
+            const UInt32 FixedFileInfoPointer = 0x28;
             UInt16 Major = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x12);
             UInt16 Minor = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x10);
             UInt16 Build = ByteOperations.ReadUInt16(version, FixedFileInfoPointer + 0x16);

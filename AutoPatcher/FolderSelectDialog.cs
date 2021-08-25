@@ -14,21 +14,24 @@ namespace WPinternals
     /// </summary>
     public class FolderSelectDialog
     {
-        // Wrapped dialog
-        System.Windows.Forms.OpenFileDialog ofd = null;
+        /// <summary>
+        /// Wrapped dialog
+        /// </summary>
+        private readonly System.Windows.Forms.OpenFileDialog ofd = null;
 
         /// <summary>
         /// Default constructor
         /// </summary>
         public FolderSelectDialog()
         {
-            ofd = new System.Windows.Forms.OpenFileDialog();
-
-            ofd.Filter = "Folders|\n";
-            ofd.AddExtension = false;
-            ofd.CheckFileExists = false;
-            ofd.DereferenceLinks = true;
-            ofd.Multiselect = false;
+            ofd = new System.Windows.Forms.OpenFileDialog
+            {
+                Filter = "Folders|\n",
+                AddExtension = false,
+                CheckFileExists = false,
+                DereferenceLinks = true,
+                Multiselect = false
+            };
         }
 
         #region Properties
@@ -39,7 +42,7 @@ namespace WPinternals
         public string InitialDirectory
         {
             get { return ofd.InitialDirectory; }
-            set { ofd.InitialDirectory = value == null || value.Length == 0 ? Environment.CurrentDirectory : value; }
+            set { ofd.InitialDirectory = string.IsNullOrEmpty(value) ? Environment.CurrentDirectory : value; }
         }
 
         /// <summary>
@@ -48,7 +51,7 @@ namespace WPinternals
         public string Title
         {
             get { return ofd.Title; }
-            set { ofd.Title = value == null ? "Select a folder" : value; }
+            set { ofd.Title = value ?? "Select a folder"; }
         }
 
         /// <summary>
@@ -87,34 +90,36 @@ namespace WPinternals
 
                 uint num = 0;
                 Type typeIFileDialog = r.GetType("FileDialogNative.IFileDialog");
-                object dialog = r.Call(ofd, "CreateVistaDialog");
-                r.Call(ofd, "OnBeforeVistaDialog", dialog);
+                object dialog = Reflector.Call(ofd, "CreateVistaDialog");
+                Reflector.Call(ofd, "OnBeforeVistaDialog", dialog);
 
-                uint options = (uint)r.CallAs(typeof(System.Windows.Forms.FileDialog), ofd, "GetOptions");
+                uint options = (uint)Reflector.CallAs(typeof(System.Windows.Forms.FileDialog), ofd, "GetOptions");
                 options |= (uint)r.GetEnum("FileDialogNative.FOS", "FOS_PICKFOLDERS");
-                r.CallAs(typeIFileDialog, dialog, "SetOptions", options);
+                Reflector.CallAs(typeIFileDialog, dialog, "SetOptions", options);
 
                 object pfde = r.New("FileDialog.VistaDialogEvents", ofd);
                 object[] parameters = new object[] { pfde, num };
-                r.CallAs2(typeIFileDialog, dialog, "Advise", parameters);
+                Reflector.CallAs2(typeIFileDialog, dialog, "Advise", parameters);
                 num = (uint)parameters[1];
                 try
                 {
-                    int num2 = (int)r.CallAs(typeIFileDialog, dialog, "Show", hWndOwner);
+                    int num2 = (int)Reflector.CallAs(typeIFileDialog, dialog, "Show", hWndOwner);
                     flag = 0 == num2;
                 }
                 finally
                 {
-                    r.CallAs(typeIFileDialog, dialog, "Unadvise", num);
+                    Reflector.CallAs(typeIFileDialog, dialog, "Unadvise", num);
                     GC.KeepAlive(pfde);
                 }
             }
             else
             {
-                var fbd = new FolderBrowserDialog();
-                fbd.Description = this.Title;
-                fbd.SelectedPath = this.InitialDirectory;
-                fbd.ShowNewFolderButton = false;
+                var fbd = new FolderBrowserDialog
+                {
+                    Description = this.Title,
+                    SelectedPath = this.InitialDirectory,
+                    ShowNewFolderButton = false
+                };
                 if (fbd.ShowDialog(new WindowWrapper(hWndOwner)) != DialogResult.OK) return false;
                 ofd.FileName = fbd.SelectedPath;
                 flag = true;
@@ -137,34 +142,32 @@ namespace WPinternals
         /// <param name="handle">Handle to wrap</param>
         public WindowWrapper(IntPtr handle)
         {
-            _hwnd = handle;
+            Handle = handle;
         }
 
         /// <summary>
         /// Original ptr
         /// </summary>
-        public IntPtr Handle
-        {
-            get { return _hwnd; }
-        }
-
-        private IntPtr _hwnd;
+        public IntPtr Handle { get; }
     }
 
     /// <summary>
+    /// <para>
     /// This class is from the Front-End for Dosbox and is used to present a 'vista' dialog box to select folders.
     /// Being able to use a vista style dialog box to select folders is much better then using the shell folder browser.
     /// http://code.google.com/p/fed/
-    ///
+    /// </para>
+    /// <para>
     /// Example:
     /// var r = new Reflector("System.Windows.Forms");
+    /// </para>
     /// </summary>
     public class Reflector
     {
         #region variables
 
-        string m_ns;
-        Assembly m_asmb;
+        private readonly string m_ns;
+        private readonly Assembly m_asmb;
 
         #endregion
 
@@ -231,8 +234,7 @@ namespace WPinternals
         {
             Type type = GetType(name);
 
-            ConstructorInfo[] ctorInfos = type.GetConstructors();
-            foreach (ConstructorInfo ci in ctorInfos)
+            foreach (ConstructorInfo ci in type.GetConstructors())
             {
                 try
                 {
@@ -251,7 +253,7 @@ namespace WPinternals
         /// <param name="func">The function to execute</param>
         /// <param name="parameters">The parameters to pass to function 'func'</param>
         /// <returns>The result of the function invocation</returns>
-        public object Call(object obj, string func, params object[] parameters)
+        public static object Call(object obj, string func, params object[] parameters)
         {
             return Call2(obj, func, parameters);
         }
@@ -263,7 +265,7 @@ namespace WPinternals
         /// <param name="func">The function to execute</param>
         /// <param name="parameters">The parameters to pass to function 'func'</param>
         /// <returns>The result of the function invocation</returns>
-        public object Call2(object obj, string func, object[] parameters)
+        public static object Call2(object obj, string func, object[] parameters)
         {
             return CallAs2(obj.GetType(), obj, func, parameters);
         }
@@ -276,7 +278,7 @@ namespace WPinternals
         /// <param name="func">The function to execute</param>
         /// <param name="parameters">The parameters to pass to function 'func'</param>
         /// <returns>The result of the function invocation</returns>
-        public object CallAs(Type type, object obj, string func, params object[] parameters)
+        public static object CallAs(Type type, object obj, string func, params object[] parameters)
         {
             return CallAs2(type, obj, func, parameters);
         }
@@ -289,7 +291,7 @@ namespace WPinternals
         /// <param name="func">The function to execute</param>
         /// <param name="parameters">The parameters to pass to function 'func'</param>
         /// <returns>The result of the function invocation</returns>
-        public object CallAs2(Type type, object obj, string func, object[] parameters)
+        public static object CallAs2(Type type, object obj, string func, object[] parameters)
         {
             MethodInfo methInfo = type.GetMethod(func, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             return methInfo.Invoke(obj, parameters);
@@ -301,7 +303,7 @@ namespace WPinternals
         /// <param name="obj">The object containing 'prop'</param>
         /// <param name="prop">The property name</param>
         /// <returns>The property value</returns>
-        public object Get(object obj, string prop)
+        public static object Get(object obj, string prop)
         {
             return GetAs(obj.GetType(), obj, prop);
         }
@@ -313,7 +315,7 @@ namespace WPinternals
         /// <param name="obj">The object containing 'prop'</param>
         /// <param name="prop">The property name</param>
         /// <returns>The property value</returns>
-        public object GetAs(Type type, object obj, string prop)
+        public static object GetAs(Type type, object obj, string prop)
         {
             PropertyInfo propInfo = type.GetProperty(prop, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             return propInfo.GetValue(obj, null);

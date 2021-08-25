@@ -45,9 +45,7 @@ namespace Patcher
 
         private void LoadPaths()
         {
-            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true);
-            if (Key == null)
-                Key = Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
+            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true) ?? Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
 
             txtVisualStudioPath.Text = (string)Key.GetValue("VisualStudioPath", "");
             if (txtVisualStudioPath.Text.Length == 0)
@@ -62,19 +60,14 @@ namespace Patcher
             LoadPatchDefinitions();
         }
 
-        private string FindVisualStudioPath()
+        private static string FindVisualStudioPath()
         {
-            string StudioPath = Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*").Where(s => File.Exists(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault();
-            if (StudioPath == null)
-                StudioPath = "";
-            return StudioPath;
+            return Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*").Where(s => File.Exists(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault() ?? "";
         }
 
         private void StorePaths()
         {
-            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true);
-            if (Key == null)
-                Key = Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
+            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true) ?? Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
 
             string VisualStudioPath = txtVisualStudioPath.Text.Trim();
             if (VisualStudioPath.Length == 0)
@@ -83,7 +76,9 @@ namespace Patcher
                     Key.DeleteValue("VisualStudioPath");
             }
             else
+            {
                 Key.SetValue("VisualStudioPath", VisualStudioPath);
+            }
 
             string PatchDefinitionsFilePath = txtPatchDefinitionsFile.Text.Trim();
             if (PatchDefinitionsFilePath.Length == 0)
@@ -92,7 +87,9 @@ namespace Patcher
                     Key.DeleteValue("PatchDefinitionsFilePath");
             }
             else
+            {
                 Key.SetValue("PatchDefinitionsFilePath", PatchDefinitionsFilePath);
+            }
 
             string ScriptFilePath = txtScriptFile.Text.Trim();
             if (ScriptFilePath.Length == 0)
@@ -101,7 +98,9 @@ namespace Patcher
                     Key.DeleteValue("ScriptFilePath");
             }
             else
+            {
                 Key.SetValue("ScriptFilePath", ScriptFilePath);
+            }
 
             string InputFolderPath = txtInputFolder.Text.Trim();
             if (InputFolderPath.Length == 0)
@@ -110,7 +109,9 @@ namespace Patcher
                     Key.DeleteValue("InputFolderPath");
             }
             else
+            {
                 Key.SetValue("InputFolderPath", InputFolderPath);
+            }
 
             string OutputFolderPath = txtOutputFolder.Text.Trim();
             if (OutputFolderPath.Length == 0)
@@ -119,7 +120,9 @@ namespace Patcher
                     Key.DeleteValue("OutputFolderPath");
             }
             else
+            {
                 Key.SetValue("OutputFolderPath", OutputFolderPath);
+            }
 
             string BackupFolderPath = txtBackupFolder.Text.Trim();
             if (BackupFolderPath.Length == 0)
@@ -128,7 +131,9 @@ namespace Patcher
                     Key.DeleteValue("BackupFolderPath");
             }
             else
+            {
                 Key.SetValue("BackupFolderPath", BackupFolderPath);
+            }
         }
 
         private bool LoadingPatchDefinitions = false;
@@ -193,7 +198,7 @@ namespace Patcher
 
         private void cmdInputFolder_Click(object sender, EventArgs e)
         {
-            FolderSelectDialog Dialog = new FolderSelectDialog();
+            FolderSelectDialog Dialog = new();
             Dialog.Title = "Select input location";
             Dialog.InitialDirectory = txtInputFolder.Text;
             try
@@ -211,7 +216,7 @@ namespace Patcher
 
         private void cmdOutputFolder_Click(object sender, EventArgs e)
         {
-            FolderSelectDialog Dialog = new FolderSelectDialog();
+            FolderSelectDialog Dialog = new();
             Dialog.Title = "Select output location";
             Dialog.InitialDirectory = txtOutputFolder.Text;
             try
@@ -270,7 +275,9 @@ namespace Patcher
         private void WriteLog(string Line)
         {
             if (txtConsole.InvokeRequired)
-                txtConsole.Invoke((MethodInvoker) delegate { WriteLog(Line); });
+            {
+                txtConsole.Invoke((MethodInvoker)delegate { WriteLog(Line); });
+            }
             else
             {
                 txtConsole.AppendText(Line + Environment.NewLine);
@@ -282,7 +289,7 @@ namespace Patcher
 
         private void cmdBackupFolder_Click(object sender, EventArgs e)
         {
-            FolderSelectDialog Dialog = new FolderSelectDialog();
+            FolderSelectDialog Dialog = new();
             Dialog.Title = "Select backup location";
             Dialog.InitialDirectory = txtBackupFolder.Text;
             try

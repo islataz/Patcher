@@ -27,7 +27,7 @@ namespace WPinternals
     {
         public static string ConvertHexToString(byte[] Bytes, string Separator)
         {
-            StringBuilder s = new StringBuilder(1000);
+            StringBuilder s = new(1000);
             for (int i = Bytes.GetLowerBound(0); i <= Bytes.GetUpperBound(0); i++)
             {
                 if (i != Bytes.GetLowerBound(0))
@@ -46,7 +46,7 @@ namespace WPinternals
 
             for (int i = 0; i < (HexString.Length >> 1); ++i)
             {
-                arr[i] = (byte)((GetHexVal(HexString[i << 1]) << 4) + (GetHexVal(HexString[(i << 1) + 1])));
+                arr[i] = (byte)((GetHexVal(HexString[i << 1]) << 4) + GetHexVal(HexString[(i << 1) + 1]));
             }
 
             return arr;
@@ -62,6 +62,5 @@ namespace WPinternals
             //Or the two combined, but a bit slower:
             return val - (val < 58 ? 48 : (val < 97 ? 55 : 87));
         }
-
     }
 }

@@ -28,26 +28,26 @@ namespace WPinternals
 {
     internal class PatchEngine
     {
-        internal List<PatchDefinition> PatchDefinitions = new List<PatchDefinition>();
-        internal readonly List<TargetRedirection> TargetRedirections = new List<TargetRedirection>();
+        internal List<PatchDefinition> PatchDefinitions = new();
+        internal readonly List<TargetRedirection> TargetRedirections = new();
 
         internal PatchEngine() { }
 
         internal PatchEngine(string PatchDefinitionsXmlString)
         {
-            XmlSerializer x = new XmlSerializer(PatchDefinitions.GetType(), null, new Type[] { }, new XmlRootAttribute("PatchDefinitions"), "");
-            MemoryStream s = new MemoryStream(System.Text.Encoding.ASCII.GetBytes(PatchDefinitionsXmlString));
+            XmlSerializer x = new(PatchDefinitions.GetType(), null, Array.Empty<Type>(), new XmlRootAttribute("PatchDefinitions"), "");
+            MemoryStream s = new(System.Text.Encoding.ASCII.GetBytes(PatchDefinitionsXmlString));
             PatchDefinitions = (List<PatchDefinition>)x.Deserialize(s);
         }
 
         internal void WriteDefinitions(string FilePath)
         {
-            XmlSerializer x = new XmlSerializer(PatchDefinitions.GetType(), null, new Type[] { }, new XmlRootAttribute("PatchDefinitions"), "");
+            XmlSerializer x = new(PatchDefinitions.GetType(), null, Array.Empty<Type>(), new XmlRootAttribute("PatchDefinitions"), "");
 
-            XmlSerializerNamespaces ns = new XmlSerializerNamespaces();
+            XmlSerializerNamespaces ns = new();
             ns.Add("", "");
 
-            System.IO.StreamWriter FileWriter = new System.IO.StreamWriter(FilePath);
+            System.IO.StreamWriter FileWriter = new(FilePath);
             XmlWriter XmlWriter = XmlWriter.Create(FileWriter, new XmlWriterSettings() { OmitXmlDeclaration = true, Indent = true, NewLineHandling = NewLineHandling.Entitize });
 
             FileWriter.WriteLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
@@ -130,23 +130,32 @@ namespace WPinternals
         }
     }
 
-    public class PatchDefinition // Must be public to be serializable
+    /// <summary>
+    /// Must be public to be serializable
+    /// </summary>
+    public class PatchDefinition
     {
         [XmlAttribute]
         public string Name;
 
-        public List<TargetVersion> TargetVersions = new List<TargetVersion>();
+        public List<TargetVersion> TargetVersions = new();
     }
 
-    public class TargetVersion // Must be public to be serializable
+    /// <summary>
+    /// Must be public to be serializable
+    /// </summary>
+    public class TargetVersion
     {
         [XmlAttribute]
         public string Description;
 
-        public List<TargetFile> TargetFiles = new List<TargetFile>();
+        public List<TargetFile> TargetFiles = new();
     }
 
-    public class TargetFile // Must be public to be serializable
+    /// <summary>
+    /// Must be public to be serializable
+    /// </summary>
+    public class TargetFile
     {
         private string _Path;
         [XmlAttribute]
@@ -192,11 +201,14 @@ namespace WPinternals
             }
         }
 
-        public List<Patch> Patches = new List<Patch>();
-        public List<TargetFile> Obsolete = new List<TargetFile>();
+        public List<Patch> Patches = new();
+        public List<TargetFile> Obsolete = new();
     }
 
-    public class Patch // Must be public to be serializable
+    /// <summary>
+    /// Must be public to be serializable
+    /// </summary>
+    public class Patch
     {
         [XmlIgnore]
         public UInt32 Address;
@@ -211,7 +223,7 @@ namespace WPinternals
             {
                 string NewValue = value;
                 if (NewValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                    NewValue = NewValue.Substring(2);
+                    NewValue = NewValue[2..];
                 Address = Convert.ToUInt32(NewValue, 16);
             }
         }

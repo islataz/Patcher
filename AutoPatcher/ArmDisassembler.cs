@@ -34,19 +34,17 @@ namespace Patcher
     {
         public static AnalyzedFile Analyze(string FilePath, string AsmPath = null)
         {
-            PeFile File = new PeFile(FilePath);
+            PeFile File = new(FilePath);
 
-            SortedList<UInt32, ArmInstruction> AnalyzedCode = new SortedList<uint, ArmInstruction>(0x1000000); // Default capacity of 0x100000 was not enough for analyzing ntoskrnl.exe
+            SortedList<UInt32, ArmInstruction> AnalyzedCode = new(0x1000000); // Default capacity of 0x100000 was not enough for analyzing ntoskrnl.exe
 
             if ((AsmPath != null) && System.IO.File.Exists(AsmPath))
             {
-                using (StreamReader Reader = new StreamReader(AsmPath))
+                using StreamReader Reader = new(AsmPath);
+                while (Reader.Peek() >= 0)
                 {
-                    while (Reader.Peek() >= 0)
-                    {
-                        ArmInstruction Instruction = new ArmInstruction(Reader.ReadLine());
-                        AnalyzedCode.Add(Instruction.Address, Instruction);
-                    }
+                    ArmInstruction Instruction = new(Reader.ReadLine());
+                    AnalyzedCode.Add(Instruction.Address, Instruction);
                 }
             }
             else
@@ -55,22 +53,22 @@ namespace Patcher
 
                 // Initially use a Dictionary and sort it afterwards. For analyzing ntoskrnl.exe this is about 60 times faster than using a SortedList from the start.
                 // Default capacity of 0x100000 was not enough for analyzing ntoskrnl.exe
-                Dictionary<UInt32, ArmInstruction> TempCode = new Dictionary<uint, ArmInstruction>(0x1000000);
+                Dictionary<UInt32, ArmInstruction> TempCode = new(0x1000000);
 
                 // Analyze from entrypoint
                 Analyze(Disassembler, File.Sections, TempCode, (UInt32)(File.ImageBase + File.EntryPoint));
 
                 // Analyze from exports
                 foreach (FunctionDescriptor Function in File.Exports)
-                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)(Function.VirtualAddress));
+                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)Function.VirtualAddress);
 
                 // Analyze from imports
                 foreach (FunctionDescriptor Function in File.Imports)
-                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)(Function.VirtualAddress));
+                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)Function.VirtualAddress);
 
                 // Analyze from runtime-functions
                 foreach (FunctionDescriptor Function in File.RuntimeFunctions)
-                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)(Function.VirtualAddress));
+                    Analyze(Disassembler, File.Sections, TempCode, (UInt32)Function.VirtualAddress);
 
                 // Sort the instructions.
                 // SortedList is used, because it can be indexed by value (not only by key).
@@ -83,12 +81,10 @@ namespace Patcher
                 {
                     System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(AsmPath));
 
-                    using (StreamWriter Writer = new StreamWriter(AsmPath, false))
+                    using StreamWriter Writer = new(AsmPath, false);
+                    for (int i = 0; i < AnalyzedCode.Count; i++)
                     {
-                        for (int i = 0; i < AnalyzedCode.Count; i++)
-                        {
-                            Writer.WriteLine(AnalyzedCode.Values[i].ToString());
-                        }
+                        Writer.WriteLine(AnalyzedCode.Values[i].ToString());
                     }
                 }
             }
@@ -98,8 +94,8 @@ namespace Patcher
 
         public static void Analyze(CapstoneDisassembler<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail> Disassembler, List<Section> Sections, Dictionary<UInt32, ArmInstruction> AnalyzedCode, UInt32 VirtualAddress)
         {
-            VirtualAddress = VirtualAddress - (VirtualAddress % 2);
-            List<UInt32> AddressesToAnalyze = new List<uint>();
+            VirtualAddress -= (VirtualAddress % 2);
+            List<UInt32> AddressesToAnalyze = new();
             AddressesToAnalyze.Add(VirtualAddress);
             Section CurrentSection = null;
 
@@ -108,7 +104,7 @@ namespace Patcher
                 UInt32 CurrentAddress = AddressesToAnalyze[0];
                 if ((CurrentSection == null) || (CurrentAddress < CurrentSection.VirtualAddress) || (CurrentAddress > (CurrentSection.VirtualAddress + CurrentSection.VirtualSize)))
                 {
-                    CurrentSection = Sections.Where(s => ((CurrentAddress >= s.VirtualAddress) && (CurrentAddress < (s.VirtualAddress + s.VirtualSize)) && s.IsCode)).FirstOrDefault();
+                    CurrentSection = Sections.Find(s => (CurrentAddress >= s.VirtualAddress) && (CurrentAddress < (s.VirtualAddress + s.VirtualSize)) && s.IsCode);
                     if (CurrentSection == null)
                     {
                         // throw new Exception("Address 0x" + CurrentAddress.ToString("X8") + " is not inside boundaries of code-sections");
@@ -127,7 +123,7 @@ namespace Patcher
                 }
 
                 IEnumerable<Instruction<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail>> NewInstructions = Disassembler.DisassembleStream(CurrentSection.Buffer, (int)CurrentAddress - (int)CurrentSection.VirtualAddress, CurrentAddress);
-                if (NewInstructions.Count() > 0)
+                if (NewInstructions.Any())
                 {
                     UInt32 StartAddress = (UInt32)NewInstructions.First().Address;
                     UInt32 EndAddress = (UInt32)NewInstructions.Last().Address;
@@ -136,7 +132,7 @@ namespace Patcher
                     foreach (Instruction<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail> DisassemblerInstruction in NewInstructions)
                     {
                         // ArmInstruction Instruction = new ArmInstruction(DisassemblerInstruction);
-                        ArmInstruction Instruction = new ArmInstruction()
+                        ArmInstruction Instruction = new()
                         {
                             Address = (UInt32)DisassemblerInstruction.Address,
                             Bytes = DisassemblerInstruction.Bytes,
@@ -151,7 +147,7 @@ namespace Patcher
                         // movw r3, #0x6010 + movt r3, #0x1000 = mov r3, #0x10006010
                         UInt32 HighPart, LowPart;
                         string HighString, LowString;
-                        if ((PreviousInstruction != null) && (PreviousInstruction.Mnemonic == "movt") && (Instruction.Mnemonic == "movw") && (PreviousInstruction.Operand.Split(new char[] { ',' })[0] == Instruction.Operand.Split(new char[] { ',' })[0]))
+                        if ((PreviousInstruction?.Mnemonic == "movt") && (Instruction.Mnemonic == "movw") && (PreviousInstruction.Operand.Split(new char[] { ',' })[0] == Instruction.Operand.Split(new char[] { ',' })[0]))
                         {
                             byte[] Combined = new byte[8];
                             System.Buffer.BlockCopy(PreviousInstruction.Bytes, 0, Combined, 0, 4);
@@ -159,20 +155,18 @@ namespace Patcher
                             PreviousInstruction.Bytes = Combined;
                             PreviousInstruction.Mnemonic = "mov";
 
-                            HighString = PreviousInstruction.Operand.Substring(PreviousInstruction.Operand.IndexOf('#') + 1);
-                            if ((HighString.Length >= 2) && (HighString.Substring(0, 2) == "0x"))
-                                HighPart = UInt32.Parse(HighString.Substring(2), System.Globalization.NumberStyles.HexNumber);
-                            else
-                                HighPart = UInt32.Parse(HighString);
-                            LowString = Instruction.Operand.Substring(Instruction.Operand.IndexOf('#') + 1);
-                            if ((LowString.Length >= 2) && (LowString.Substring(0, 2) == "0x"))
-                                LowPart = UInt32.Parse(LowString.Substring(2), System.Globalization.NumberStyles.HexNumber);
-                            else
-                                LowPart = UInt32.Parse(LowString);
-                            PreviousInstruction.Operand = PreviousInstruction.Operand.Substring(0, PreviousInstruction.Operand.IndexOf('#') + 1) + "0x" + ((HighPart << 16) + LowPart).ToString("X8");
+                            HighString = PreviousInstruction.Operand[(PreviousInstruction.Operand.IndexOf('#') + 1)..];
+                            HighPart = (HighString.Length >= 2) && (HighString.Substring(0, 2) == "0x")
+                                ? UInt32.Parse(HighString[2..], System.Globalization.NumberStyles.HexNumber)
+                                : UInt32.Parse(HighString);
+                            LowString = Instruction.Operand[(Instruction.Operand.IndexOf('#') + 1)..];
+                            LowPart = (LowString.Length >= 2) && (LowString.Substring(0, 2) == "0x")
+                                ? UInt32.Parse(LowString[2..], System.Globalization.NumberStyles.HexNumber)
+                                : UInt32.Parse(LowString);
+                            PreviousInstruction.Operand = string.Concat(PreviousInstruction.Operand.AsSpan(0, PreviousInstruction.Operand.IndexOf('#') + 1), "0x", ((HighPart << 16) + LowPart).ToString("X8"));
                             continue;
                         }
-                        if ((PreviousInstruction != null) && (PreviousInstruction.Mnemonic == "movw") && (Instruction.Mnemonic == "movt") && (PreviousInstruction.Operand.Split(new char[] { ',' })[0] == Instruction.Operand.Split(new char[] { ',' })[0]))
+                        if ((PreviousInstruction?.Mnemonic == "movw") && (Instruction.Mnemonic == "movt") && (PreviousInstruction.Operand.Split(new char[] { ',' })[0] == Instruction.Operand.Split(new char[] { ',' })[0]))
                         {
                             byte[] Combined = new byte[8];
                             System.Buffer.BlockCopy(PreviousInstruction.Bytes, 0, Combined, 0, 4);
@@ -180,17 +174,15 @@ namespace Patcher
                             PreviousInstruction.Bytes = Combined;
                             PreviousInstruction.Mnemonic = "mov";
 
-                            HighString = Instruction.Operand.Substring(Instruction.Operand.IndexOf('#') + 1);
-                            if ((HighString.Length >= 2) && (HighString.Substring(0, 2) == "0x"))
-                                HighPart = UInt32.Parse(HighString.Substring(2), System.Globalization.NumberStyles.HexNumber);
-                            else
-                                HighPart = UInt32.Parse(HighString);
-                            LowString = PreviousInstruction.Operand.Substring(PreviousInstruction.Operand.IndexOf('#') + 1);
-                            if ((LowString.Length >= 2) && (LowString.Substring(0, 2) == "0x"))
-                                LowPart = UInt32.Parse(LowString.Substring(2), System.Globalization.NumberStyles.HexNumber);
-                            else
-                                LowPart = UInt32.Parse(LowString);
-                            PreviousInstruction.Operand = PreviousInstruction.Operand.Substring(0, PreviousInstruction.Operand.IndexOf('#') + 1) + "0x" + ((HighPart << 16) + LowPart).ToString("X8");
+                            HighString = Instruction.Operand[(Instruction.Operand.IndexOf('#') + 1)..];
+                            HighPart = (HighString.Length >= 2) && (HighString.Substring(0, 2) == "0x")
+                                ? UInt32.Parse(HighString[2..], System.Globalization.NumberStyles.HexNumber)
+                                : UInt32.Parse(HighString);
+                            LowString = PreviousInstruction.Operand[(PreviousInstruction.Operand.IndexOf('#') + 1)..];
+                            LowPart = (LowString.Length >= 2) && (LowString.Substring(0, 2) == "0x")
+                                ? UInt32.Parse(LowString[2..], System.Globalization.NumberStyles.HexNumber)
+                                : UInt32.Parse(LowString);
+                            PreviousInstruction.Operand = string.Concat(PreviousInstruction.Operand.AsSpan(0, PreviousInstruction.Operand.IndexOf('#') + 1), "0x", ((HighPart << 16) + LowPart).ToString("X8"));
                             continue;
                         }
 
@@ -212,14 +204,14 @@ namespace Patcher
                             {
                                 UInt32 RawOffsetOfIndirectConstant = VirtualAddressOfIndirectConstant - CurrentSection.VirtualAddress;
                                 UInt32 IndirectConstant = BitConverter.ToUInt32(CurrentSection.Buffer, (int)RawOffsetOfIndirectConstant);
-                                Instruction.Operand = Instruction.Operand.Substring(0, IndexOfIndirectConstant) + "#0x" + IndirectConstant.ToString("x8") + Instruction.Operand.Substring(IndexOfEnd + 1);
+                                Instruction.Operand = Instruction.Operand.Substring(0, IndexOfIndirectConstant) + "#0x" + IndirectConstant.ToString("x8") + Instruction.Operand[(IndexOfEnd + 1)..];
                             }
                         }
 
                         if (JumpCommands.Contains(Instruction.Mnemonic))
                         {
-                            UInt32 NewAddress = UInt32.Parse(Instruction.Operand.Substring(Instruction.Operand.IndexOf("#0x") + 3), System.Globalization.NumberStyles.HexNumber);
-                            NewAddress = NewAddress - (NewAddress % 2);
+                            UInt32 NewAddress = UInt32.Parse(Instruction.Operand[(Instruction.Operand.IndexOf("#0x") + 3)..], System.Globalization.NumberStyles.HexNumber);
+                            NewAddress -= (NewAddress % 2);
                             if (((NewAddress < StartAddress) || (NewAddress > EndAddress)) && !AddressesToAnalyze.Any(a => a == NewAddress))
                                 AddressesToAnalyze.Add(NewAddress);
                         }
@@ -248,7 +240,7 @@ namespace Patcher
 
         public static string WriteCode(SortedDictionary<UInt32, ArmInstruction> AnalyzedCode)
         {
-            StringBuilder Code = new StringBuilder(1000);
+            StringBuilder Code = new(1000);
 
             foreach (var Instruction in AnalyzedCode)
             {
@@ -278,19 +270,19 @@ namespace Patcher
             for (int i = 0; i < Bytes.Length; i++)
                 Bytes[i] = byte.Parse(Hex.Substring(i * 3, 2), System.Globalization.NumberStyles.HexNumber);
             Mnemonic = Assembly.Substring(39, 16).Trim();
-            Operand = Assembly.Substring(55);
+            Operand = Assembly[55..];
         }
 
         public override string ToString()
         {
-            StringBuilder Result = new StringBuilder();
+            StringBuilder Result = new();
 
             Result.Append(Address.ToString("X8")); // 0
             Result.Append("    ");
             for (int i = 0; i < Bytes.Length; i++) // 12
             {
                 Result.Append(Bytes[i].ToString("X2"));
-                Result.Append(" ");
+                Result.Append(' ');
             }
             Result.Append(new String(' ', (8 - Bytes.Length) * 3));
             Result.Append("   ");
@@ -300,7 +292,7 @@ namespace Patcher
             return Result.ToString();
         }
     }
-    
+
     public class AnalyzedFile
     {
         public PeFile File;

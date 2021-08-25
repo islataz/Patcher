@@ -46,12 +46,11 @@ namespace Patcher
         {
             string VirtualOffsetString = txtVirtualOffset.Text.Trim();
             if (VirtualOffsetString.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                VirtualOffsetString = VirtualOffsetString.Substring(2);
-            
-            UInt32 VirtualOffset = 0;
+                VirtualOffsetString = VirtualOffsetString[2..];
+
             CodeType CodeType = Patcher.CodeType.Thumb2;
             byte[] CompiledCode = null;
-            if (UInt32.TryParse(VirtualOffsetString, System.Globalization.NumberStyles.HexNumber, null, out VirtualOffset))
+            if (UInt32.TryParse(VirtualOffsetString, System.Globalization.NumberStyles.HexNumber, null, out uint VirtualOffset))
             {
                 CodeType = (CodeType)Enum.Parse(typeof(Patcher.CodeType), cmbCodeType.SelectedItem.ToString());
                 CompiledCode = ArmCompiler.Compile(txtVisualStudioPath.Text, VirtualOffset, CodeType, txtAssemblyCode.Text);
@@ -64,9 +63,7 @@ namespace Patcher
 
         private void LoadPaths()
         {
-            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true);
-            if (Key == null)
-                Key = Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
+            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true) ?? Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
 
             txtVisualStudioPath.Text = (string)Key.GetValue("VisualStudioPath", "");
             if (txtVisualStudioPath.Text.Length == 0)
@@ -82,19 +79,14 @@ namespace Patcher
             LoadPatchDefinitions();
         }
 
-        private string FindVisualStudioPath()
+        private static string FindVisualStudioPath()
         {
-            string StudioPath = Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*").Where(s => File.Exists(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault();
-            if (StudioPath == null)
-                StudioPath = "";
-            return StudioPath;
+            return Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*").Where(s => File.Exists(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault() ?? "";
         }
 
         private void StorePaths()
         {
-            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true);
-            if (Key == null)
-                Key = Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
+            RegistryKey Key = Registry.CurrentUser.OpenSubKey(@"Software\Patcher", true) ?? Registry.CurrentUser.CreateSubKey(@"Software\Patcher");
 
             string VisualStudioPath = txtVisualStudioPath.Text.Trim();
             if (VisualStudioPath.Length == 0)
@@ -103,7 +95,9 @@ namespace Patcher
                     Key.DeleteValue("VisualStudioPath");
             }
             else
+            {
                 Key.SetValue("VisualStudioPath", VisualStudioPath);
+            }
 
             string PatchDefinitionsFilePath = txtPatchDefinitionsFile.Text.Trim();
             if (PatchDefinitionsFilePath.Length == 0)
@@ -112,7 +106,9 @@ namespace Patcher
                     Key.DeleteValue("PatchDefinitionsFilePath");
             }
             else
+            {
                 Key.SetValue("PatchDefinitionsFilePath", PatchDefinitionsFilePath);
+            }
 
             string PatchDefinitionName = cmbPatchDefinitionName.Text.Trim();
             if (PatchDefinitionName.Length == 0)
@@ -121,7 +117,9 @@ namespace Patcher
                     Key.DeleteValue("PatchDefinitionName");
             }
             else
+            {
                 Key.SetValue("PatchDefinitionName", PatchDefinitionName);
+            }
 
             string TargetVersion = cmbTargetVersion.Text.Trim();
             if (TargetVersion.Length == 0)
@@ -130,7 +128,9 @@ namespace Patcher
                     Key.DeleteValue("TargetVersion");
             }
             else
+            {
                 Key.SetValue("TargetVersion", TargetVersion);
+            }
 
             string TargetFilePath = cmbTargetPath.Text.Trim();
             if (TargetFilePath.Length == 0)
@@ -139,7 +139,9 @@ namespace Patcher
                     Key.DeleteValue("TargetFilePath");
             }
             else
+            {
                 Key.SetValue("TargetFilePath", TargetFilePath);
+            }
 
             string InputFilePath = txtInputFile.Text.Trim();
             if (InputFilePath.Length == 0)
@@ -148,7 +150,9 @@ namespace Patcher
                     Key.DeleteValue("InputFilePath");
             }
             else
+            {
                 Key.SetValue("InputFilePath", InputFilePath);
+            }
 
             string OutputFilePath = txtOutputFile.Text.Trim();
             if (OutputFilePath.Length == 0)
@@ -157,7 +161,9 @@ namespace Patcher
                     Key.DeleteValue("OutputFilePath");
             }
             else
+            {
                 Key.SetValue("OutputFilePath", OutputFilePath);
+            }
         }
 
         private bool LoadingPatchDefinitions = false;
@@ -187,17 +193,17 @@ namespace Patcher
             try
             {
                 string Definitions = File.ReadAllText(txtPatchDefinitionsFile.Text);
-                PatchEngine Engine = new PatchEngine(Definitions);
+                PatchEngine Engine = new(Definitions);
                 Engine.PatchDefinitions.Where(d => !string.IsNullOrEmpty(d.Name)).Select(d => d.Name).Distinct().ToList().ForEach(n => cmbPatchDefinitionName.Items.Add(n));
                 PatchDefinition Definition = null;
                 if (cmbPatchDefinitionName.Text.Trim().Length > 0)
-                    Definition = Engine.PatchDefinitions.Where(d => string.Compare(d.Name, cmbPatchDefinitionName.Text.Trim(), true) == 0).FirstOrDefault();
+                    Definition = Engine.PatchDefinitions.Find(d => string.Equals(d.Name, cmbPatchDefinitionName.Text.Trim(), StringComparison.CurrentCultureIgnoreCase));
                 if (Definition != null)
                 {
                     Definition.TargetVersions.Where(v => !string.IsNullOrEmpty(v.Description)).Select(v => v.Description).Distinct().ToList().ForEach(d => cmbTargetVersion.Items.Add(d));
                     TargetVersion Version = null;
                     if (cmbTargetVersion.Text.Trim().Length > 0)
-                        Version = Definition.TargetVersions.Where(v => string.Compare(v.Description, cmbTargetVersion.Text.Trim(), true) == 0).FirstOrDefault();
+                        Version = Definition.TargetVersions.Find(v => string.Equals(v.Description, cmbTargetVersion.Text.Trim(), StringComparison.CurrentCultureIgnoreCase));
                     if (Version != null)
                     {
                         Version.TargetFiles.Where(f => !string.IsNullOrEmpty(f.Path)).Select(f => Path.GetDirectoryName(f.Path)).Distinct().ToList().ForEach(f => cmbTargetPath.Items.Add(f));
@@ -308,17 +314,18 @@ namespace Patcher
         {
             string VirtualOffsetString = txtVirtualOffset.Text.Trim();
             if (VirtualOffsetString.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                VirtualOffsetString = VirtualOffsetString.Substring(2);
-            UInt32 VirtualAddress = 0;
+                VirtualOffsetString = VirtualOffsetString[2..];
             CodeType CodeType = Patcher.CodeType.Thumb2;
             byte[] CompiledCode = null;
-            if (UInt32.TryParse(VirtualOffsetString, System.Globalization.NumberStyles.HexNumber, null, out VirtualAddress))
+            if (UInt32.TryParse(VirtualOffsetString, System.Globalization.NumberStyles.HexNumber, null, out uint VirtualAddress))
             {
                 CodeType = (CodeType)Enum.Parse(typeof(Patcher.CodeType), cmbCodeType.SelectedItem.ToString());
                 CompiledCode = ArmCompiler.Compile(txtVisualStudioPath.Text, VirtualAddress, CodeType, txtAssemblyCode.Text);
             }
             if ((VirtualAddress != 0) && (CompiledCode == null))
+            {
                 txtCompiledOpcodes.Text = ArmCompiler.Output;
+            }
             else
             {
                 if (CompiledCode != null)
@@ -326,7 +333,7 @@ namespace Patcher
 
                 string TargetFilePath = Path.Combine(cmbTargetPath.Text, Path.GetFileName(txtInputFile.Text));
                 if (TargetFilePath.StartsWith(@"\"))
-                    TargetFilePath = TargetFilePath.Substring(1);
+                    TargetFilePath = TargetFilePath[1..];
 
                 try
                 {

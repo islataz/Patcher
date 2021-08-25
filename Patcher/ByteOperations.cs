@@ -164,16 +164,14 @@ namespace WPinternals
 
             UInt32? Result = null;
 
-            FileStream Stream = new FileStream(FileName, FileMode.Open, FileAccess.Read);
+            FileStream Stream = new(FileName, FileMode.Open, FileAccess.Read);
 
             byte[] Buffer = new byte[0x10000 + Pattern.Length - 1];
-            UInt32 BufferReadPosition = 0; // Position in buffer where file-chunk is being read.
             UInt32 BytesInBuffer = 0;
             UInt32 BytesRead;
             UInt32 SearchPositionFile = 0;
             UInt32 SearchPositionBuffer = 0;
             UInt32 BufferFileOffset = 0; // Offset in file where data from buffer is located.
-            bool Match = false;
             int i;
 
             OutPattern = null;
@@ -187,7 +185,7 @@ namespace WPinternals
                     {
                         System.Buffer.BlockCopy(Buffer, (int)SearchPositionBuffer, Buffer, 0, (int)(BytesInBuffer - SearchPositionBuffer));
                     }
-                    BufferReadPosition = BytesInBuffer - SearchPositionBuffer;
+                    uint BufferReadPosition = BytesInBuffer - SearchPositionBuffer;
                     BytesInBuffer -= SearchPositionBuffer;
                     BufferFileOffset += SearchPositionBuffer;
                     SearchPositionBuffer = 0;
@@ -196,17 +194,18 @@ namespace WPinternals
                     BytesInBuffer += BytesRead;
                 }
 
-                Match = true;
+                bool Match = true;
                 for (i = 0; i < Pattern.Length; i++)
                 {
                     if (Buffer[SearchPositionBuffer + i] != Pattern[i])
+                    {
                         if ((Mask == null) || (Mask[i] == 0))
                         {
                             Match = false;
                             break;
                         }
+                    }
                 }
-
 
                 if (Match)
                 {
@@ -264,20 +263,21 @@ namespace WPinternals
             UInt32? Result = null;
 
             UInt32 SearchPosition = SourceOffset;
-            bool Match = false;
             int i;
 
             while ((SearchPosition <= (SourceBuffer.Length - Pattern.Length)) && ((SourceSize == null) || (SearchPosition <= (SourceOffset + SourceSize - Pattern.Length))))
             {
-                Match = true;
+                bool Match = true;
                 for (i = 0; i < Pattern.Length; i++)
                 {
                     if (SourceBuffer[SearchPosition + i] != Pattern[i])
+                    {
                         if ((Mask == null) || (Mask[i] == 0))
                         {
                             Match = false;
                             break;
                         }
+                    }
                 }
 
                 if (Match)
@@ -315,7 +315,7 @@ namespace WPinternals
             return (UInt16)(0x10000 - Checksum);
         }
 
-        private static UInt32[] CRC32Table = new UInt32[] {
+        private static readonly UInt32[] CRC32Table = new UInt32[] {
             0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F,
             0xE963A535, 0x9E6495A3, 0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988,
             0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91, 0x1DB71064, 0x6AB020F2,
@@ -374,11 +374,6 @@ namespace WPinternals
                     crc = (crc >> 8) ^ CRC32Table[ (crc ^ Input[i]) & 0xFF ];
                 }
                 crc = (uint)(crc ^ (-1));
-
-                if (crc < 0)
-                {
-                    crc += (uint)4294967296;
-                }
 
                 return crc;
             }
