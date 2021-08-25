@@ -49,7 +49,7 @@ namespace Patcher
             }
             else
             {
-                CapstoneDisassembler<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail> Disassembler = CapstoneDisassembler.CreateArmDisassembler(DisassembleMode.ArmThumb);
+                CapstoneArmDisassembler Disassembler = CapstoneDisassembler.CreateArmDisassembler(ArmDisassembleMode.Thumb);
 
                 // Initially use a Dictionary and sort it afterwards. For analyzing ntoskrnl.exe this is about 60 times faster than using a SortedList from the start.
                 // Default capacity of 0x100000 was not enough for analyzing ntoskrnl.exe
@@ -92,7 +92,7 @@ namespace Patcher
             return new AnalyzedFile() { File = File, Code = AnalyzedCode };
         }
 
-        public static void Analyze(CapstoneDisassembler<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail> Disassembler, List<Section> Sections, Dictionary<UInt32, ArmInstruction> AnalyzedCode, UInt32 VirtualAddress)
+        public static void Analyze(CapstoneArmDisassembler Disassembler, List<Section> Sections, Dictionary<UInt32, ArmInstruction> AnalyzedCode, UInt32 VirtualAddress)
         {
             VirtualAddress -= (VirtualAddress % 2);
             List<UInt32> AddressesToAnalyze = new();
@@ -122,14 +122,14 @@ namespace Patcher
                     continue;
                 }
 
-                IEnumerable<Instruction<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail>> NewInstructions = Disassembler.DisassembleStream(CurrentSection.Buffer, (int)CurrentAddress - (int)CurrentSection.VirtualAddress, CurrentAddress);
+                Gee.External.Capstone.Arm.ArmInstruction[] NewInstructions = Disassembler.Disassemble(CurrentSection.Buffer.Skip((int)CurrentAddress - (int)CurrentSection.VirtualAddress).ToArray(), CurrentAddress);
                 if (NewInstructions.Any())
                 {
                     UInt32 StartAddress = (UInt32)NewInstructions.First().Address;
                     UInt32 EndAddress = (UInt32)NewInstructions.Last().Address;
 
                     ArmInstruction PreviousInstruction = null;
-                    foreach (Instruction<Gee.External.Capstone.Arm.ArmInstruction, ArmRegister, ArmInstructionGroup, ArmInstructionDetail> DisassemblerInstruction in NewInstructions)
+                    foreach (Gee.External.Capstone.Arm.ArmInstruction DisassemblerInstruction in NewInstructions)
                     {
                         // ArmInstruction Instruction = new ArmInstruction(DisassemblerInstruction);
                         ArmInstruction Instruction = new()
