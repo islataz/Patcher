@@ -49,11 +49,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <None Update="capstone.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="Gee.External.Capstone" Version="2.0.2" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
