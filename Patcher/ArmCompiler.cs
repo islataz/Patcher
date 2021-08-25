@@ -84,11 +84,13 @@ namespace Patcher
 
             File.WriteAllText(AssemblyFilePath, FullAssemblyCode);
 
-            ProcessStartInfo psi = new(Path.Combine(PathToVisualStudio, @"VC\bin\x86_arm\armasm.exe"));
+            string ArmAsmPath = MainForm.FindArmAsmPath(PathToVisualStudio);
+            string BinPath = MainForm.FindMSVCBinaryPaths(PathToVisualStudio).FirstOrDefault() ?? "";
+            ProcessStartInfo psi = new(Path.Combine(ArmAsmPath, "armasm.exe"));
             psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"Common7\IDE\");
             psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"Common7\Tools\");
-            psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"VC\bin\");
-            psi.EnvironmentVariables["PATH"] += ";" + Path.Combine(PathToVisualStudio, @"VC\bin\x86_arm\");
+            psi.EnvironmentVariables["PATH"] += ";" + BinPath;
+            psi.EnvironmentVariables["PATH"] += ";" + ArmAsmPath;
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
             psi.CreateNoWindow = true;

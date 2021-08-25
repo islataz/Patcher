@@ -20,6 +20,7 @@
 
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -60,9 +61,62 @@ namespace Patcher
             LoadPatchDefinitions();
         }
 
+        public static string[] FindMSVCBinaryPaths(string s)
+        {
+            string LegacyPath = Path.Combine(s, @"VC\bin");
+            if (Directory.Exists(LegacyPath))
+            {
+                return new string[] { LegacyPath };
+            }
+
+            if (Directory.Exists(Path.Combine(s, @"VC\Tools\MSVC")))
+            {
+                IEnumerable<string> MSVCs = Directory.EnumerateDirectories(Path.Combine(s, @"VC\Tools\MSVC"));
+                IEnumerable<string> Bins = MSVCs.Select(s => Path.Combine(s, "bin")).Where(s => Directory.Exists(s));
+                return Bins.ToArray();
+            }
+
+            return Array.Empty<string>();
+        }
+
+        public static string FindArmAsmPath(string s)
+        {
+            foreach (string MSVCBin in FindMSVCBinaryPaths(s))
+            {
+                string path1 = Path.Combine(MSVCBin, "x86_arm");
+                string path2 = Path.Combine(MSVCBin, @"Hostx86\arm");
+
+                if (File.Exists(Path.Combine(path1, "armasm.exe")))
+                {
+                    return path1;
+                }
+
+                if (File.Exists(Path.Combine(path2, "armasm.exe")))
+                {
+                    return path2;
+                }
+            }
+
+            return "";
+        }
+
         private static string FindVisualStudioPath()
         {
-            return Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*").Where(s => File.Exists(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault() ?? "";
+            IEnumerable<string> MainX86VSDirectories = Directory.EnumerateDirectories(@"C:\Program Files (x86)\", "Microsoft Visual Studio*");
+            IEnumerable<string> MainX64VSDirectories = Directory.EnumerateDirectories(@"C:\Program Files\", "Microsoft Visual Studio*");
+
+            IEnumerable<string> MainVSDirectories = MainX86VSDirectories.Union(MainX64VSDirectories);
+
+            IEnumerable<string> SubMainVSDirectories = MainVSDirectories.SelectMany(s => Directory.EnumerateDirectories(s));
+            IEnumerable<string> SubSubMainVSDirectories = SubMainVSDirectories.SelectMany(s => Directory.EnumerateDirectories(s));
+            IEnumerable<string> Directories = MainVSDirectories.Union(SubMainVSDirectories).Union(SubSubMainVSDirectories);
+            
+            string attempt1 = Directories.Where(s => FindArmAsmPath(s) != "").OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"VC\bin\x86_arm\armasm.exe"))).FirstOrDefault() ?? "";
+
+            if (attempt1 != "")
+                return attempt1;
+
+            return Directories.Where(s => Directory.Exists(Path.Combine(s, @"VC\Tools\MSVC"))).Select(s => Path.Combine(s, @"VC\Tools\MSVC")).SelectMany(s => Directory.EnumerateDirectories(s)).Where(s => File.Exists(Path.Combine(s, @"bin\Hostx86\arm\armasm.exe"))).OrderByDescending(s => File.GetCreationTime(Path.Combine(s, @"bin\Hostx86\arm\armasm.exe"))).FirstOrDefault() ?? "";
         }
 
         private void StorePaths()
